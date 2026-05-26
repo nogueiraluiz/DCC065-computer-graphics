@@ -1,17 +1,17 @@
   import { OBJLoader } from "../../build/jsm/loaders/OBJLoader.js";
   import { MTLLoader } from "../../build/jsm/loaders/MTLLoader.js";
 
-  export function carregarAviaoInimigo() {
+  export function carregarAviaoInimigo2() {
     return new Promise((resolve) => {
       const mtlLoader = new MTLLoader();
-      mtlLoader.setPath("./assets/alien in green spaceship/");
-      mtlLoader.load("materials.mtl", (materials) => {
+      mtlLoader.setPath("./assets/Flying saucer/");
+      mtlLoader.load("1352 Flying Saucer.mtl", (materials) => {
         materials.preload();
         const objLoader = new OBJLoader();
         objLoader.setMaterials(materials);
-        objLoader.load("./assets/alien in green spaceship/model.obj", (object) => {
+        objLoader.load("./assets/Flying saucer/1352 Flying Saucer.obj", (object) => {
           object.name = "aviaoInimigo";
-          object.scale.set(13, 10, 10);
+          object.scale.set(0.12, 0.12, 0.12);
           resolve(object);
         });
       });

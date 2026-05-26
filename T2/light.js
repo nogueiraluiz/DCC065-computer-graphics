@@ -4,11 +4,10 @@ const LIGHT_SOURCE_X_POSITION = -100;
 const LIGHT_SOURCE_Y_POSITION = 100;
 
 /**
- * @param {number} cameraNearZ Z position of camera near plane
- * @param {number} cameraFarZ Z position of camera far plane
- * @param {Array} cameraPosition camera's X and Y coordinates
- * @param {boolean} addHelper creates a helper associated with the light object if true
- * @param {scene} scene to add light to
+ * Inicializa luzes direcional e ambiental da cena
+ * @param {camera} camera com propriedades definidas das quais os parâmetros
+ * de sombra são derivados
+ * @param {scene} scene à qual a luz será adicionada
  * @returns 
  */
 export function initSceneLighting(camera, scene) {
@@ -20,21 +19,31 @@ export function initSceneLighting(camera, scene) {
     light.target.position.set(0, 0, 0);
 
     light.castShadow = true;
-    light.shadow.mapSize.width = 4096;
-    light.shadow.mapSize.height = 4096;
-    light.shadow.radius = 1.5;
+    light.shadow.mapSize.width = 8112;
+    light.shadow.mapSize.height = 8112;
+    light.shadow.radius = 2;
 
     scene.add(light);
     scene.add(ambientLight);
     scene.add(light.target);
 
-    updateLightVolume(light, camera, scene.fog.far);
+    updateLightVolume(light, scene.fog.far);
     return light;
 }
 
-const MAX_TREE_HEIGHT = 15;
+const MAX_TREE_HEIGHT = 19; // maior tamanho de conífera possível com as escalas randomizadas
 
-export function updateLightVolume(light, camera, fogFar) {
+/**
+ * Atualiza o frustum da câmera auxiliar da luz para projetar sombras somente no
+ * volume visível definido pelo valor da fog
+ * 
+ * Usa uma pequena folga para garantir a experiência sem comprometer performance
+ * 
+ * @param {*} light luz direcional utilizada
+ * @param {*} camera camera 
+ * @param {*} fogFar 
+ */
+export function updateLightVolume(light, fogFar) {
     const topBottom = fogFar + MAX_TREE_HEIGHT;
 
     light.shadow.camera.left = -fogFar * 0.2;
@@ -43,14 +52,4 @@ export function updateLightVolume(light, camera, fogFar) {
     light.shadow.camera.bottom = -topBottom;
     light.shadow.camera.far = fogFar + 200;
     light.shadow.camera.updateProjectionMatrix();
-}
-
-export function updateLightPosition(light, camera) {
-    light.position.set(
-        camera.position.x + LIGHT_SOURCE_X_POSITION,
-        LIGHT_SOURCE_Y_POSITION,
-        camera.position.z
-    );
-    light.target.position.set(camera.position.x, 0, camera.position.z);
-    light.target.updateMatrixWorld();
 }

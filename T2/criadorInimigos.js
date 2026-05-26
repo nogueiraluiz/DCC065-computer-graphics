@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { carregarAviaoInimigo } from "./alienVerde.js";
-import { carregarAviaoInimigo2 } from "./oviniInimigo.js";
-import { CONFIG } from "./Configuracao.js";
+import { carregarAviaoInimigo2 } from "./ovniInimigo.js";
+import { CONFIG } from "./config.js";
 
 export class CriadorInimigos {
   constructor(scene) {
@@ -146,7 +146,7 @@ export class CriadorInimigos {
         const proximoReserva =
           reservas[Math.floor(Math.random() * reservas.length)];
 
-        if (proximoReserva && proximoReserva.mesh) {
+        if (proximoReserva?.mesh) {
           const distanciaSpawnZ = 950;
           const borderSpawnX =
             Math.tan(fovRadianos / 2) * distanciaSpawnZ * camera.aspect;

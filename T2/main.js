@@ -1,6 +1,5 @@
 /**
- * @file main.js
- * Ponto de entrada da cena. Inicializa renderer, cena, câmera, avião e loop de animação.
+ * @file Ponto de entrada da cena. Inicializa renderer, cena, câmera, avião e loop de animação.
  */
 
 import * as THREE from "three";
@@ -13,20 +12,20 @@ import {
 import { createWorldTiles, updateTiles } from "./tiles.js";
 import { initMouseTracking, inputUpdate } from "./input.js";
 import { updateCamera } from "./camera.js";
-import { CriadorInimigos } from "./CriadorInimigos.js";
-import { initPauseMenu } from "./bottons.js";
-import { LaserPool } from "./SistemaTiros.js";
+import { CriadorInimigos } from "./criadorInimigos.js";
+import { initPauseMenu, initUI } from "./buttons.js";
+import { LaserPool } from "./sistemaTiros.js";
 import { CollisionManager } from "./collisionManager.js";
 import { criaTarget } from "./target.js";
-import { CONFIG } from "./Configuracao.js";
+import { CONFIG } from "./config.js";
 import { initSceneLighting, updateLightVolume } from "./light.js";
 import { startRenderer } from "./renderer.js";
 
 // Cor do céu — usada tanto no fundo do renderer quanto na névoa para fundir o horizonte
 const BASE_COLOR = "rgb(148, 181, 224)";
 let scene = new THREE.Scene();
-scene.fog = new THREE.Fog(BASE_COLOR, 1, 1500);
-let renderer = startRenderer(BASE_COLOR, THREE.PCFShadowMap);
+scene.fog = new THREE.Fog(BASE_COLOR, 1, 1200);
+let renderer = startRenderer(BASE_COLOR);
 
 // Painel de FPS no canto da tela
 const stats = new Stats();
@@ -49,7 +48,7 @@ let light = initSceneLighting(camera, scene);
 let fogParams = { fogFar: scene.fog.far };
 gui.add(fogParams, "fogFar", 50, 2000, 1).onChange((value) => {
   scene.fog.far = value;
-  updateLightVolume(light, camera, value);
+  updateLightVolume(light, value);
 });
 
 
@@ -71,38 +70,30 @@ const POPULACAO_TOTAL = 5;
 
 const criadorInimigos = new CriadorInimigos(scene);
 
-// Cria e armazena os 5 objetos no pool
-// === COLOQUE ESTE BLOCO CORRIGIDO NO SEU LAÇO DE CRIAÇÃO (FOR) ===
 for (let i = 0; i < POPULACAO_TOTAL; i++) {
   const ladoDoCanto = i % 2 === 0 ? -80 : 80;
   const posicaoZFixaDesteInimigo = CONFIG.inimigos.posicaoZCombate;
 
-  criadorInimigos
-    // MODIFICADO: Agora nascem na altura do horizonte (CONFIG.input.planeBaseY) em vez de Y=25
-    .criarInimigoAleatorio(
-      ladoDoCanto,
-      CONFIG.input.planeBaseY,
-      posicaoZFixaDesteInimigo,
-    )
-    .then((inimigoSorteado) => {
-      inimigoSorteado.indice = i;
+  const inimigoSorteado = await criadorInimigos.criarInimigoAleatorio(
+    ladoDoCanto,
+    CONFIG.input.planeBaseY,
+    posicaoZFixaDesteInimigo,
+  );
 
-      inimigoSorteado.vida = 100;
-      inimigoSorteado.life = 100;
-      inimigoSorteado.destruido = false;
-      if (inimigoSorteado.mesh) {
-        inimigoSorteado.mesh.vida = 100;
-        inimigoSorteado.mesh.life = 100;
-      }
+  inimigoSorteado.indice = i;
+  inimigoSorteado.life = 100;
+  inimigoSorteado.destruido = false;
+  if (inimigoSorteado.mesh) {
+    inimigoSorteado.mesh.life = 100;
+  }
 
-      inimigoSorteado.offsetZAtual = posicaoZFixaDesteInimigo;
-      listaInimigos.push(inimigoSorteado);
+  inimigoSorteado.offsetZAtual = posicaoZFixaDesteInimigo;
+  listaInimigos.push(inimigoSorteado);
 
-      if (i < 2) {
-        inimigoSorteado.ativo = true;
-        inimigoSorteado.mesh.visible = true;
-      }
-    });
+  if (i < 2) {
+    inimigoSorteado.ativo = true;
+    inimigoSorteado.mesh.visible = true;
+  }
 }
 
 // Vida dos Inimigos e do Jogador
@@ -113,8 +104,8 @@ let aviaoBB = new THREE.Box3();
 let laserPool = new LaserPool(scene, "player", "rgb(255, 25, 140)", 80);
 let laserPoolInimigos = new LaserPool(scene, "enemy", "rgb(21, 0, 255)", 40);
 
-const inimigoCollisionManager = new CollisionManager("enemy");
-const saldoCollisionManager = new CollisionManager("saldo");
+const hud = initUI();
+const inimigoCollisionManager = new CollisionManager("enemy", null, hud);
 
 //Tiro dos inimigos
 // --- COOLDOWN DE DISPARO DOS INIMIGOS ---
@@ -164,24 +155,24 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
 }
 
 // Controle de entrada de tiros (Segurar botão)
-let estáAtirando = false;
+let estaAtirando = false;
 let tempoUltimoTiro = 0;
 const CADENCIA_TIRO = CONFIG.lasers.cadenciaJogador;
 
-window.addEventListener("mousedown", (event) => {
-  if (event.button === 0) estáAtirando = true;
+globalThis.addEventListener("mousedown", (event) => {
+  if (event.button === 0) estaAtirando = true;
 });
-window.addEventListener("mouseup", (event) => {
-  if (event.button === 0) estáAtirando = false;
+globalThis.addEventListener("mouseup", (event) => {
+  if (event.button === 0) estaAtirando = false;
 });
-window.addEventListener("keydown", (event) => {
-  if (event.code === "Space") estáAtirando = true;
+globalThis.addEventListener("keydown", (event) => {
+  if (event.code === "Space") estaAtirando = true;
 });
-window.addEventListener("keyup", (event) => {
-  if (event.code === "Space") estáAtirando = false;
+globalThis.addEventListener("keyup", (event) => {
+  if (event.code === "Space") estaAtirando = false;
 });
-window.addEventListener("blur", () => {
-  estáAtirando = false;
+globalThis.addEventListener("blur", () => {
+  estaAtirando = false;
 });
 
 const jogadorCollisionManager = new CollisionManager(
@@ -191,16 +182,14 @@ const jogadorCollisionManager = new CollisionManager(
       console.log("GAME OVER! O avião foi destruído.");
     }
   },
+  hud,
 );
-
-const scoreElement = document.getElementById("score-counter");
-const lifeElement = document.getElementById("player-life");
 
 window.addEventListener(
   "resize",
   function () {
     onWindowResize(camera, renderer);
-    updateLightVolume(light, camera, scene.fog.far);
+    updateLightVolume(light, scene.fog.far);
   },
   false,
 );
@@ -236,7 +225,7 @@ function gerenciarDisparoJogador(scaledDelta) {
   if (globalThis._shootEnabled === false) return;
 
   if (
-    estáAtirando &&
+    estaAtirando &&
     tempoUltimoTiro >= CADENCIA_TIRO &&
     targetMesh &&
     aviaoMesh
@@ -259,19 +248,17 @@ function gerenciarDisparoJogador(scaledDelta) {
  */
 function processarReciclagemInimigos() {
   listaInimigos.forEach((inimigoTarget) => {
-    if (!inimigoTarget || !inimigoTarget.ativo) return;
+    if (!inimigoTarget?.ativo) return;
 
     const meshInterna = inimigoTarget.mesh;
     if (!meshInterna) return;
 
     const foiAbatido =
-      inimigoTarget.vida <= 0 ||
       inimigoTarget.life <= 0 ||
       inimigoTarget.destruido === true ||
-      meshInterna.vida <= 0 ||
       meshInterna.life <= 0 ||
       (meshInterna.userData &&
-        (meshInterna.userData.vida <= 0 || meshInterna.userData.life <= 0));
+        (meshInterna.userData.life <= 0));
 
     // 1. ATIVA QUEDA
     if (foiAbatido && !inimigoTarget.caindo) {
@@ -294,10 +281,8 @@ function processarReciclagemInimigos() {
       inimigosAbatidos++;
 
       // Reseta os dados de integridade estrutural
-      inimigoTarget.vida = 100;
       inimigoTarget.life = 100;
       inimigoTarget.destruido = false;
-      meshInterna.vida = 100;
       meshInterna.life = 100;
 
       // Coloca de volta no pool na distância segura do horizonte
