@@ -5,7 +5,7 @@ import { MTLLoader } from "../../build/jsm/loaders/MTLLoader.js";
 // Lista de cores pastéis/arcade metálicas que existiam antes
 const CORES_OVNI = [
   "#0b5d9a", // Azul Escuro
-  "#538db7", // Azul Claro / Ciano
+  "#538db7", // Azul Claro
   "#e06187", // Rosa Escuro
   "#e26b8e", // Rosa Claro
   "#fbd8b6", // Bege Suave
