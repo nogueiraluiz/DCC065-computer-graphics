@@ -5,10 +5,7 @@
 import * as THREE from "three";
 import Stats from "../../build/jsm/libs/stats.module.js";
 import { criaAviao } from "./aviao.js";
-import GUI from "../../libs/util/dat.gui.module.js";
-import {
-  onWindowResize,
-} from "../libs/util/util.js";
+import { onWindowResize } from "../libs/util/util.js";
 import { createWorldTiles, updateTiles } from "./tiles.js";
 import { initMouseTracking, inputUpdate } from "./input.js";
 import { updateCamera } from "./camera.js";
@@ -31,26 +28,18 @@ let renderer = startRenderer(BASE_COLOR);
 const stats = new Stats();
 document.getElementById("webgl-output").appendChild(stats.domElement);
 
-let gui = new GUI();
-
-const altitudeParams = { altitude: 0 };
-gui.add(altitudeParams, "altitude").name("Altitude").listen();
-
 // FOV de 22° = zoom longo, parecido com câmera de perseguição de shoot-em-up
-let camera = new THREE.PerspectiveCamera(22, window.innerWidth / window.innerHeight, 0.1, 2100);
-camera.position.set(0, 105, -150); // começa atrás e na mesma altura do avião
+let camera = new THREE.PerspectiveCamera(
+  22,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  2100,
+);
+camera.position.set(0, 105, -150);
 camera.lookAt(0, 120, 0);
 scene.add(camera);
 
 let light = initSceneLighting(camera, scene);
-
-/** @type {{ fogFar: number }} Parâmetros do GUI para controle (slider) da névoa. */
-let fogParams = { fogFar: scene.fog.far };
-gui.add(fogParams, "fogFar", 50, 2000, 1).onChange((value) => {
-  scene.fog.far = value;
-  updateLightVolume(light, value);
-});
-
 
 initMouseTracking();
 
@@ -59,11 +48,11 @@ const aviaoController = criaAviao(scene);
 let aviaoMesh = aviaoController.object;
 aviaoMesh.position.set(0, CONFIG.input.planeBaseY, 0);
 
-//Target
+// Target
 const targetMesh = criaTarget(scene);
 targetMesh.position.set(0, CONFIG.input.planeBaseY, 140);
 
-//População inimigo
+// População inimigo
 let tempoInimigo = 0;
 let listaInimigos = [];
 const POPULACAO_TOTAL = 5;
@@ -104,12 +93,12 @@ let aviaoBB = new THREE.Box3();
 let laserPool = new LaserPool(scene, "player", "rgb(255, 25, 140)", 80);
 let laserPoolInimigos = new LaserPool(scene, "enemy", "rgb(21, 0, 255)", 40);
 
-const hud = initUI();
+// Passamos a scene e a light para o buttons.js instanciar e estilizar o dat.GUI sem duplicar
+const hud = initUI(scene, light);
 const inimigoCollisionManager = new CollisionManager("enemy", null, hud);
 
-//Tiro dos inimigos
-// --- COOLDOWN DE DISPARO DOS INIMIGOS ---
-const INTERVALO_TIRO_INIMIGO = CONFIG.inimigos.intervaloTiro; // Tempo em segundos entre os tiros de cada inimigo
+// Tiro dos inimigos
+const INTERVALO_TIRO_INIMIGO = CONFIG.inimigos.intervaloTiro;
 
 function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
   if (!aviaoMesh || !camera) return;
@@ -119,7 +108,6 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
     if (!inimigoTarget.ativo || !inimigoTarget.mesh || inimigoTarget.caindo)
       return;
 
-    // BLOQUEIO DE DISPARO PELA NÉVOA (FOG)
     const distanciaAteCamera = inimigoTarget.mesh.position.distanceTo(
       camera.position,
     );
@@ -128,7 +116,6 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
       return;
     }
 
-    // Inicializa o relógio se ele não existir
     if (
       inimigoTarget.tempoRecarga === undefined ||
       inimigoTarget.tempoRecarga === null
@@ -136,9 +123,7 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
     }
 
-    // O tempo corre baseado no delta escalado (que já engloba o gameSpeed)
     inimigoTarget.tempoRecarga += scaledDelta;
-
     inimigoTarget.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
 
     const intervaloAdaptado = CONFIG.inimigos.intervaloTiro / gameSpeed;
@@ -148,13 +133,12 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
       direcaoAlvo.subVectors(aviaoMesh.position, inimigoTarget.mesh.position);
 
       laserPoolInimigos.shoot(inimigoTarget.mesh.position, direcaoAlvo);
-
       inimigoTarget.tempoRecarga = 0;
     }
   });
 }
 
-// Controle de entrada de tiros (Segurar botão)
+// Controle de entrada de tiros
 let estaAtirando = false;
 let tempoUltimoTiro = 0;
 const CADENCIA_TIRO = CONFIG.lasers.cadenciaJogador;
@@ -178,8 +162,19 @@ globalThis.addEventListener("blur", () => {
 const jogadorCollisionManager = new CollisionManager(
   "player",
   (target, status) => {
-    if (status.life <= 0) {
-      console.log("GAME OVER! O avião foi destruído.");
+    const LIMITE_TIROS = 20;
+
+    // Se atingiu o limite e o avião ainda não iniciou a queda
+    if (status.life >= LIMITE_TIROS && !aviaoMesh.caindo) {
+      aviaoMesh.caindo = true;
+      aviaoMesh.velocidadeQuedaY = 25; // Mesma velocidade de queda dos inimigos
+      aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
+
+      // Bloqueia disparos do jogador imediatamente
+      globalThis._shootEnabled = false;
+
+      // Cria o aviso "Ai, eu morri" na tela
+      hud.showMorteAviso();
     }
   },
   hud,
@@ -230,22 +225,14 @@ function gerenciarDisparoJogador(scaledDelta) {
     targetMesh &&
     aviaoMesh
   ) {
-    // 1. CALCULA O VETOR DE DIREÇÃO REAL: Direção que vai do avião direto para o Target
     _direcaoTiroJogador
       .subVectors(targetMesh.position, aviaoMesh.position)
       .normalize();
-
-    // 2. DISPARO DO LASER: O tiro nasce na frente do avião e viaja apontado na direção da mira.
-    // Isso garante o deslocamento completo tridimensional e faz os tiros atravessarem os colisores inimigos!
     laserPool.shoot(aviaoMesh.position, _direcaoTiroJogador);
-
     tempoUltimoTiro = 0;
   }
 }
 
-/**
- * Varre o pool de inimigos para gerenciar a animação de queda e reciclar
- */
 function processarReciclagemInimigos() {
   listaInimigos.forEach((inimigoTarget) => {
     if (!inimigoTarget?.ativo) return;
@@ -257,35 +244,29 @@ function processarReciclagemInimigos() {
       inimigoTarget.life <= 0 ||
       inimigoTarget.destruido === true ||
       meshInterna.life <= 0 ||
-      (meshInterna.userData &&
-        (meshInterna.userData.life <= 0));
+      (meshInterna.userData && meshInterna.userData.life <= 0);
 
-    // 1. ATIVA QUEDA
     if (foiAbatido && !inimigoTarget.caindo) {
       inimigoTarget.caindo = true;
       inimigoTarget.velocidadeQuedaY = 25;
       inimigoTarget.velocidadeGiro = Math.random() * 8 + 6;
-
       if (meshInterna.userData) meshInterna.userData.destruido = false;
       return;
     }
 
-    // 2. RECICLAGEM REAL: Quando o objeto cai abaixo do cenário, reseta e oculta de forma limpa
     const bateuNoChao = meshInterna.position.y <= -20;
 
     if (bateuNoChao) {
       inimigoTarget.ativo = false;
       inimigoTarget.active = false;
       inimigoTarget.caindo = false;
-      meshInterna.visible = false; // Esconde visualmente
+      meshInterna.visible = false;
       inimigosAbatidos++;
 
-      // Reseta os dados de integridade estrutural
       inimigoTarget.life = 100;
       inimigoTarget.destruido = false;
       meshInterna.life = 100;
 
-      // Coloca de volta no pool na distância segura do horizonte
       inimigoTarget.offsetZAtual = CONFIG.inimigos.distanciaSpawnZ;
       inimigoTarget.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
@@ -300,10 +281,35 @@ function render() {
   const delta = clock.getDelta();
 
   if (!isPaused) {
-    const scaledDelta = delta * gameSpeed * 1.2;
+    const scaledDelta = delta * gameSpeed;
+    
+    if (aviaoMesh.caindo) {
+      // 1. O avião centraliza sozinho no meio da tela (X: 0) progressivamente
+      aviaoMesh.position.x += (0 - aviaoMesh.position.x) * 0.1;
 
-    // 1. Atualização de Movimentação e Câmera
-    inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta); // Repassa o targetMesh para a física operar
+      // GARANTIA DE ESCOPO: Inicializa os valores caso a main tente ler antes do hit carregar
+      if (aviaoMesh.velocidadeQuedaY === undefined)
+        aviaoMesh.velocidadeQuedaY = 25;
+      if (aviaoMesh.velocidadeGiro === undefined) aviaoMesh.velocidadeGiro = 6;
+
+      // 2. A gravidade puxa ele para baixo (multiplicado pelo delta para manter a taxa de quadros suave)
+      aviaoMesh.position.y -= aviaoMesh.velocidadeQuedaY * scaledDelta;
+
+      // 3. Rotação desgovernada corrigida para a física tridimensional do Three.js
+      aviaoMesh.rotation.z += aviaoMesh.velocidadeGiro * scaledDelta;
+      aviaoMesh.rotation.x += aviaoMesh.velocidadeGiro * 0.5 * scaledDelta;
+
+      // 4. Quando atinge o chão (Y <= 0 ou -20 dependendo do seu plano de tiles)
+      if (aviaoMesh.position.y <= -20) {
+        isPaused = true;
+        hud.showGameOver();
+      }
+    } else {
+      // Inputs normais ativos enquanto o avião está vivo
+      inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);
+    }
+
+    inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);
     updateTiles(scaledDelta);
     updateCamera(camera, aviaoMesh, scaledDelta);
 
@@ -317,7 +323,6 @@ function render() {
       );
     }
 
-    // 2. Gerenciamento e Atualização de Projéteis
     aviaoBB.setFromObject(aviaoMesh);
     gerenciarDisparoJogador(scaledDelta);
     gerenciarDisparoInimigos(scaledDelta, aviaoMesh);
@@ -328,21 +333,17 @@ function render() {
     listaInimigos.forEach((inimigo) => {
       if (inimigo.ativo && inimigo.mesh && inimigo.bb) {
         if (inimigo.caindo) {
-          // Se já foi abatido e está na animação de queda, esvazia a caixa para o laser passar direto
           inimigo.bb.makeEmpty();
         } else {
-          // Se está vivo e combatendo, atualiza o colisor normalmente
           inimigo.bb.setFromObject(inimigo.mesh);
         }
       }
     });
 
-    // 2. Sistema de Colisões Filtrado apenas por naves que estão vivas e combatendo (NÃO CAINDO)
     const inimigosProntosParaColidir = listaInimigos.filter(
       (inimigo) => inimigo.ativo && !inimigo.caindo,
     );
 
-    // Executa a colisão uma única vez passando os parâmetros necessários
     inimigoCollisionManager.checkLaserAgainstTargets(
       laserPool.getActiveLasers(),
       inimigosProntosParaColidir,
@@ -351,17 +352,17 @@ function render() {
       scene,
     );
 
-    // Processa a morte e limpa os inimigos abatidos da tela
     processarReciclagemInimigos();
 
     jogadorCollisionManager.checkLaserAgainstTargets(
       laserPoolInimigos.getActiveLasers(),
-      [{ ativo: true, mesh: aviaoMesh, bb: aviaoBB }], // Engana o sistema passando o jogador como alvo único
+      [{ ativo: true, mesh: aviaoMesh, bb: aviaoBB }],
       laserPoolInimigos,
     );
   }
-  altitudeParams.altitude = Math.round(aviaoMesh.position.y);
-  stats.update();                        // atualiza contador de FPS
-  requestAnimationFrame(render);         // agenda o próximo frame
-  renderer.render(scene, camera);        // desenha a cena na tela
+
+  hud.updateAltitude(aviaoMesh.position.y);
+  stats.update();
+  requestAnimationFrame(render);
+  renderer.render(scene, camera);
 }

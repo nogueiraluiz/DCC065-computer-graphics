@@ -722,7 +722,7 @@ function rebuildTerrain(tile, frontEdgeHeights) {
         tile.add(object);
 
         // Alinha a orientação da árvore com a normal do terreno.
-        object.quaternion.setFromUnitVectors(worldUp, worldNormal);
+        //object.quaternion.setFromUnitVectors(worldUp, worldNormal);
         // Posiciona a árvore exatamente sobre o ponto amostrado do terreno.
         object.position.set(localX, height, localZ);
         // Levanta um pouco a base da árvore para evitar que ela afunde no chão.
