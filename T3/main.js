@@ -162,7 +162,7 @@ globalThis.addEventListener("blur", () => {
 const jogadorCollisionManager = new CollisionManager(
   "player",
   (target, status) => {
-    const LIMITE_TIROS = 20;
+    const LIMITE_TIROS = 5;
 
     // Se atingiu o limite e o avião ainda não iniciou a queda
     if (status.life >= LIMITE_TIROS && !aviaoMesh.caindo) {
@@ -282,38 +282,35 @@ function render() {
 
   if (!isPaused) {
     const scaledDelta = delta * gameSpeed;
-    
+
+    // === LÓGICA DE QUEDA E PERDA DE CONTROLE BLINDADA ===
     if (aviaoMesh.caindo) {
-      // 1. O avião centraliza sozinho no meio da tela (X: 0) progressivamente
       aviaoMesh.position.x += (0 - aviaoMesh.position.x) * 0.1;
 
-      // GARANTIA DE ESCOPO: Inicializa os valores caso a main tente ler antes do hit carregar
       if (aviaoMesh.velocidadeQuedaY === undefined)
-        aviaoMesh.velocidadeQuedaY = 25;
+        aviaoMesh.velocidadeQuedaY = 5;
       if (aviaoMesh.velocidadeGiro === undefined) aviaoMesh.velocidadeGiro = 6;
 
-      // 2. A gravidade puxa ele para baixo (multiplicado pelo delta para manter a taxa de quadros suave)
+      // Cai em Y cruzando o chão para sumir da tela
       aviaoMesh.position.y -= aviaoMesh.velocidadeQuedaY * scaledDelta;
 
-      // 3. Rotação desgovernada corrigida para a física tridimensional do Three.js
+      // Gira apenas no eixo Z descontroladamente
       aviaoMesh.rotation.z += aviaoMesh.velocidadeGiro * scaledDelta;
-      aviaoMesh.rotation.x += aviaoMesh.velocidadeGiro * 0.5 * scaledDelta;
 
-      // 4. Quando atinge o chão (Y <= 0 ou -20 dependendo do seu plano de tiles)
-      if (aviaoMesh.position.y <= -20) {
+      // Quando sumir totalmente da viewport de câmera (Y <= -250), congela e abre o Game Over
+      if (aviaoMesh.position.y <= -10) {
         isPaused = true;
         hud.showGameOver();
       }
     } else {
-      // Inputs normais ativos enquanto o avião está vivo
+      // CORREÇÃO MESTRA: O input só lê se NÃO estiver caindo (Removido o duplo comando abaixo)
       inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);
     }
 
-    inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);
     updateTiles(scaledDelta);
     updateCamera(camera, aviaoMesh, scaledDelta);
 
-    if (aviaoMesh) {
+    if (aviaoMesh && !aviaoMesh.caindo) {
       tempoInimigo += scaledDelta;
       criadorInimigos.atualizarMovimento(
         scaledDelta,
@@ -354,11 +351,13 @@ function render() {
 
     processarReciclagemInimigos();
 
-    jogadorCollisionManager.checkLaserAgainstTargets(
-      laserPoolInimigos.getActiveLasers(),
-      [{ ativo: true, mesh: aviaoMesh, bb: aviaoBB }],
-      laserPoolInimigos,
-    );
+    if (!aviaoMesh.caindo) {
+      jogadorCollisionManager.checkLaserAgainstTargets(
+        laserPoolInimigos.getActiveLasers(),
+        [{ ativo: true, mesh: aviaoMesh, bb: aviaoBB }],
+        laserPoolInimigos,
+      );
+    }
   }
 
   hud.updateAltitude(aviaoMesh.position.y);

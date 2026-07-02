@@ -4,7 +4,7 @@ import GUI from "../../libs/util/dat.gui.module.js";
 import { updateLightVolume } from "./light.js";
 
 // A fonte fofa e arredondada oficial do seu jogo
-const FONTE_PADRAO = "'Arial Rounded MT Bold', sans-serif";
+const FONTE_PADRAO = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 export function initUI(scene, light) {
   const container = document.createElement("div");
@@ -143,12 +143,11 @@ export function initUI(scene, light) {
     updateAltitude(y) {
       altitudeParams.altitude = Math.round(y);
     },
-    // === COMBINADO: GAME OVER LIMPA O AVISO ANTERIOR E CONSTRUÇÃO DOS BOTÕES VERTICAIS ===
+
     showGameOver() {
       if (document.getElementById("game-arcade-over")) return;
 
-      // Se o aviso "Ai, eu morri" ainda estiver na tela após o avião cair, remove ele agora
-      const avisoMorteAntigo = document.getElementById("ui-aviso-morte");
+      const avisoMorteAntigo = document.getElementById("ui-container-morte");
       if (avisoMorteAntigo) {
         avisoMorteAntigo.remove();
       }
@@ -157,79 +156,74 @@ export function initUI(scene, light) {
       gameOverOverlay.id = "game-arcade-over";
       gameOverOverlay.style.cssText = `
         position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-        background-color: rgba(61, 64, 91, 0.75); z-index: 3000; font-family: ${FONTE_PADRAO};
+        background-color: rgba(61, 64, 91, 0.5); z-index: 3000; font-family: ${FONTE_PADRAO};
       `;
 
       const panel = document.createElement("div");
       panel.style.cssText = `
-        display: flex; flex-direction: column; align-items: center; gap: 16px;
+        display: flex; flex-direction: column; align-items: center; gap: 20px;
         min-width: 300px; padding: 36px; border-radius: 20px; background-color: #fbf8f3;
         border: 4px solid #3d405b; box-shadow: 8px 8px 0px #3d405b; text-align: center;
         font-family: ${FONTE_PADRAO};
       `;
 
+      // Título em Rosa Hello Kitty (#e06187) igual ao "PAUSADO"
       const title = document.createElement("div");
       title.innerHTML = `
-        <span style="color: #d6213b; font-size: 36px; font-weight: 900; letter-spacing: 1px; font-family: ${FONTE_PADRAO};">GAME OVER</span>
+        <span style="color: #e06187; font-size: 36px; font-weight: 900; letter-spacing: 2px; font-family: ${FONTE_PADRAO}; text-transform: uppercase;">GAME OVER</span>
         <div style="font-size: 14px; font-weight: 800; color: #7d809b; margin-top: 8px; text-transform: uppercase; font-family: ${FONTE_PADRAO};">O avião foi destruído!</div>
       `;
 
-      // Botão Superior: Tentar Novamente (Azul) - Cantos Arredondados de 12px
+      // Único Botão: Tentar Novamente em Amarelo Arcade (#f2d925) com texto escuro
       const btnRestart = document.createElement("button");
       btnRestart.textContent = "TENTAR NOVAMENTE";
       btnRestart.style.cssText = `
-        width: 100%; padding: 14px 28px; font-size: 14px; font-weight: 900; color: #ffffff;
-        background-color: #1f6494; border: 3px solid #3d405b; border-radius: 12px;
+        width: 100%; padding: 14px 28px; font-size: 14px; font-weight: 900; color: #3d405b;
+        background-color: #f2d925; border: 3px solid #3d405b; border-radius: 12px;
         cursor: pointer; box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out;
         font-family: ${FONTE_PADRAO}; letter-spacing: 0.5px;
       `;
       btnRestart.addEventListener("click", () => globalThis.location.reload());
 
-      // Botão Inferior: Voltar ao Menu (Grafite) - Cantos Arredondados de 12px
-      const btnExit = document.createElement("button");
-      btnExit.textContent = "VOLTAR AO MENU";
-      btnExit.style.cssText = `
-        width: 100%; padding: 14px 28px; font-size: 14px; font-weight: 900; color: #ffffff;
-        background-color: #3d405b; border: 3px solid #1a1a1a; border-radius: 12px;
-        cursor: pointer; box-shadow: 4px 4px 0px #1a1a1a; transition: all 0.1s ease-in-out;
-        font-family: ${FONTE_PADRAO}; letter-spacing: 0.5px;
-      `;
-      btnExit.addEventListener("click", () => globalThis.location.reload());
-
-      // Efeitos dinâmicos de clique físico estilo arcade para os dois botões
-      [btnRestart, btnExit].forEach((btn) => {
-        btn.addEventListener("mousedown", () => {
-          btn.style.transform = "translate(2px, 2px)";
-          btn.style.boxShadow =
-            "2px 2px 0px " + (btn === btnRestart ? "#3d405b" : "#1a1a1a");
-        });
-        btn.addEventListener("mouseup", () => {
-          btn.style.transform = "none";
-          btn.style.boxShadow =
-            "4px 4px 0px " + (btn === btnRestart ? "#3d405b" : "#1a1a1a");
-        });
+      // Efeito de clique físico tridimensional no botão
+      btnRestart.addEventListener("mousedown", () => {
+        btnRestart.style.transform = "translate(2px, 2px)";
+        btnRestart.style.boxShadow = "2px 2px 0px #3d405b";
+      });
+      btnRestart.addEventListener("mouseup", () => {
+        btnRestart.style.transform = "none";
+        btnRestart.style.boxShadow = "4px 4px 0px #3d405b";
       });
 
       panel.appendChild(title);
       panel.appendChild(btnRestart);
-      panel.appendChild(btnExit);
       gameOverOverlay.appendChild(panel);
       document.body.appendChild(gameOverOverlay);
     },
 
-    // === COMBINADO: AVISO TEMPORÁRIO "AI, EU MORRI" DURANTE A QUEDA ===
+    // === MODIFICADO: AVISO COM BOTÃO INFERIOR ACOPLADO E Z-INDEX SEGURO ===
     showMorteAviso() {
-      if (document.getElementById("ui-aviso-morte")) return;
+      if (document.getElementById("ui-container-morte")) return;
 
-      const aviso = document.createElement("div");
-      aviso.id = "ui-aviso-morte";
-      aviso.textContent = "Ai, eu morri";
-      aviso.style.cssText = `
+      const mainContainer = document.createElement("div");
+      mainContainer.id = "ui-container-morte";
+      mainContainer.style.cssText = `
         position: fixed;
-        top: 40%;
+        top: 45%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #cb1e2b;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        z-index: 900; /* Fica abaixo de overlays de pause (10) ou outros menus principais */
+        pointer-events: auto;
+      `;
+
+      const aviso = document.createElement("div");
+      aviso.textContent = "Ai, eu morri";
+      aviso.style.cssText = `
+        background: #cb1e6f;
         color: #ffffff;
         font-family: ${FONTE_PADRAO};
         font-size: 24px;
@@ -238,12 +232,32 @@ export function initUI(scene, light) {
         border: 4px solid #1a1a1a;
         border-radius: 12px;
         box-shadow: 6px 6px 0px #1a1a1a;
-        z-index: 2500;
         text-transform: uppercase;
         letter-spacing: 1px;
-        animation: piscar 0.3s infinite alternate;
-        pointer-events: none;
+        text-align: center;
+        transition: transform 0.05s;
       `;
+
+      const quickBtn = document.createElement("button");
+      quickBtn.textContent = "REINICIAR";
+      quickBtn.style.cssText = `
+        padding: 10px 24px;
+        font-size: 13px;
+        font-weight: 900;
+        color: #1a1a1a;
+        background-color: #f2d925;
+        border: 3px solid #1a1a1a;
+        border-radius: 12px;
+        cursor: pointer;
+        box-shadow: 4px 4px 0px #1a1a1a;
+        font-family: ${FONTE_PADRAO};
+        transition: transform 0.05s;
+      `;
+      quickBtn.addEventListener("click", () => globalThis.location.reload());
+      quickBtn.addEventListener("mousedown", () => {
+        quickBtn.style.transform = "translate(2px, 2px)";
+        quickBtn.style.boxShadow = "2px 2px 0px #1a1a1a";
+      });
 
       if (!document.getElementById("arcade-piscar-style")) {
         const styleSheet = document.createElement("style");
@@ -257,7 +271,9 @@ export function initUI(scene, light) {
         document.head.appendChild(styleSheet);
       }
 
-      document.body.appendChild(aviso);
+      mainContainer.appendChild(aviso);
+      mainContainer.appendChild(quickBtn);
+      document.body.appendChild(mainContainer);
     },
   };
 }
@@ -330,7 +346,7 @@ export function initPauseMenu({
   const pauseOverlay = document.createElement("div");
   pauseOverlay.style.cssText = `
     position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    background-color: rgba(61, 64, 91, 0.4); z-index: 10; user-select: none; font-family: ${FONTE_PADRAO};
+    background-color: rgba(61, 64, 91, 0.4); z-index: 2100; user-select: none; font-family: ${FONTE_PADRAO};
   `;
 
   const pausePanel = document.createElement("div");
@@ -377,7 +393,6 @@ export function initPauseMenu({
   speedButton3.textContent = "3.0x";
   Object.assign(speedButton3.style, speedButtonBase);
 
-  // === CORREÇÃO TIPOGRÁFICA COMPACTA: Substituídos os seletores sans-serif ===
   const toggleShootingButton = document.createElement("button");
   toggleShootingButton.style.cssText = `padding: 12px 12px; border-radius: 12px; border: 2px solid #f2d925; font-size: 14px; font-weight: 900; cursor: pointer; transition: all 0.15s ease-in-out; font-family: ${FONTE_PADRAO};`;
 
