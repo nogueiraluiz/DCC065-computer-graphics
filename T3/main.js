@@ -161,10 +161,7 @@ globalThis.addEventListener("blur", () => {
   estaAtirando = false;
 });
 
-// Tiro por toque (mobile): qualquer toque no canvas que não seja interceptado pelo joystick dispara
-renderer.domElement.addEventListener('touchstart', () => { estaAtirando = true; }, { passive: true });
-renderer.domElement.addEventListener('touchend', () => { estaAtirando = false; }, { passive: true });
-renderer.domElement.addEventListener('touchcancel', () => { estaAtirando = false; }, { passive: true });
+// Mobile: disparo controlado pelo movimento do joystick via globalThis._mobileFiring (ver mobile.js)
 
 const jogadorCollisionManager = new CollisionManager(
   "player",
@@ -181,7 +178,7 @@ const jogadorCollisionManager = new CollisionManager(
       globalThis._shootEnabled = false;
 
       // Cria o aviso "Ai, eu morri" na tela
-      hud.showMorteAviso();
+      hud.showMorteAviso(resetGame);
     }
   },
   hud,
@@ -223,7 +220,26 @@ if (!CONFIG.DISABLE_START_MENU) {
 
 initMobileControls();
 _setLoadingProgress(100, 'Pronto!');
-setTimeout(_hideLoadingScreen, 300);
+// Exibe o botão JOGAR na tela de carregamento; ela só some quando o jogador clicar
+const _loadingStartBtn = document.getElementById('loading-start-btn');
+if (_loadingStartBtn) {
+  _loadingStartBtn.style.display = 'block';
+  _loadingStartBtn.addEventListener('click', () => {
+    _hideLoadingScreen();
+    // Inicia o jogo diretamente (pula a tela inicial do menu de pausa)
+    if (pauseMenu) pauseMenu.start();
+    else { isPaused = false; clock.getDelta(); }
+  });
+  // Efeito de clique físico no botão
+  _loadingStartBtn.addEventListener('mousedown', () => {
+    _loadingStartBtn.style.transform = 'translate(2px, 2px)';
+    _loadingStartBtn.style.boxShadow = '2px 2px 0px #3d405b';
+  });
+  _loadingStartBtn.addEventListener('mouseup', () => {
+    _loadingStartBtn.style.transform = 'none';
+    _loadingStartBtn.style.boxShadow = '4px 4px 0px #3d405b';
+  });
+}
 
 const _direcaoTiroJogador = new THREE.Vector3();
 
@@ -355,6 +371,7 @@ function resetGame() {
   hud.updateSaldo(0, 0);
 
   gameSpeed = CONFIG.modos.velocidadeJogoPadrao;
+  if (pauseMenu) pauseMenu.syncSpeedButtons();
 
   if (pauseMenu) pauseMenu.showStartScreen();
   isPaused = true;
@@ -387,8 +404,7 @@ function render() {
       // Quando sumir totalmente da viewport de câmera (Y <= -250), congela e abre o Game Over
       if (aviaoMesh.position.y <= -10) {
         isPaused = true;
-        hud.showGameOver(resetGame);
-      }
+        }
     } else {
       // CORREÇÃO MESTRA: O input só lê se NÃO estiver caindo (Removido o duplo comando abaixo)
       inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);

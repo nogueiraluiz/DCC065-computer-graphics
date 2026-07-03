@@ -14,35 +14,21 @@ export function initMobileControls() {
   injectMobileStyles();
   createJoystick();
   createOverlayButtons();
-
-  // Tiro: toque em qualquer área fora do joystick e dos botões de overlay dispara
-  document.body.addEventListener('touchstart', (e) => {
-    if (e.target.closest('#mobile-joystick-base') || e.target.closest('#mobile-overlay-buttons')) return;
-    globalThis._mobileFiring = true;
-  }, { passive: true });
-  document.body.addEventListener('touchend', () => {
-    globalThis._mobileFiring = false;
-  }, { passive: true });
-  document.body.addEventListener('touchcancel', () => {
-    globalThis._mobileFiring = false;
-  }, { passive: true });
+  // Disparo é controlado pelo movimento do joystick (_mobileFiring no tick do joystick)
 }
 
 function injectMobileStyles() {
   const style = document.createElement('style');
   style.textContent = `
     @media (pointer: coarse) {
-      /* HUD compacto: empilha verticalmente e no canto esquerdo */
+      /* HUD compacto: menor e no canto esquerdo */
       #game-arcade-ui {
         flex-direction: column !important;
-        left: 10px !important;
-        transform: none !important;
+        left: 5px !important;
+        top: 5px !important;
+        transform: scale(0.55) !important;
+        transform-origin: top left !important;
         gap: 6px !important;
-        top: 10px !important;
-      }
-      #game-arcade-ui > div {
-        min-width: 110px !important;
-        padding: 4px 10px !important;
       }
       /* Oculta dat.GUI no mobile */
       .dg.ac {
@@ -57,6 +43,8 @@ function createJoystick() {
   const BASE_SIZE = 120;
   const THUMB_SIZE = 52;
   const MAX_RADIUS = 40;
+  // NDC por frame a 100% de deflexão (~1.1s para cruzar a tela inteira a 60fps)
+  const MAX_SPEED = 0.03;
 
   const base = document.createElement('div');
   base.id = 'mobile-joystick-base';
@@ -96,6 +84,22 @@ function createJoystick() {
   let activeId = null;
   let centerX = 0;
   let centerY = 0;
+  // Eixos normalizados [-1, 1]; zero quando em repouso
+  let joyX = 0;
+  let joyY = 0;
+
+  // Loop de taxa: joystick controla velocidade da mira, não posição absoluta
+  function tick() {
+    if (joyX !== 0 || joyY !== 0) {
+      mouse.x = THREE.MathUtils.clamp(mouse.x + joyX * MAX_SPEED, -1, 1);
+      mouse.y = THREE.MathUtils.clamp(mouse.y + joyY * MAX_SPEED, -1, 1);
+      globalThis._mobileFiring = true;
+    } else {
+      globalThis._mobileFiring = false;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 
   function recalcCenter() {
     const rect = base.getBoundingClientRect();
@@ -125,12 +129,8 @@ function createJoystick() {
         dy *= s;
       }
       thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-      // Escala igual ao mouse: deslocamento em pixels / metade da tela = NDC
-      // Multiplicador 2.5 para que o alcance máximo do joystick cubra ~50% da mira
-      const scaleX = (window.innerWidth / 2) / 2.5;
-      const scaleY = (window.innerHeight / 2) / 2.5;
-      mouse.x = THREE.MathUtils.clamp(dx / scaleX, -1, 1);
-      mouse.y = THREE.MathUtils.clamp(-dy / scaleY, -1, 1);
+      joyX = dx / MAX_RADIUS;
+      joyY = -dy / MAX_RADIUS; // eixo Y invertido: cima no stick = NDC positivo
     }
   }, { passive: false });
 
@@ -140,8 +140,9 @@ function createJoystick() {
       if (t.identifier === activeId) {
         activeId = null;
         thumb.style.transform = 'translate(-50%, -50%)';
-        mouse.x = 0;
-        mouse.y = 0;
+        joyX = 0;
+        joyY = 0;
+        // mira permanece na última posição — comportamento padrão de thumbstick
       }
     }
   }
@@ -155,7 +156,7 @@ function createOverlayButtons() {
   container.id = 'mobile-overlay-buttons';
   container.style.cssText = `
     position: fixed;
-    bottom: 28px;
+    top: 20px;
     right: 20px;
     display: flex;
     flex-direction: column;
@@ -245,9 +246,19 @@ function createOverlayButtons() {
     syncMusica();
   });
 
+  // --- Botão Pause ---
+  const btnPause = makeBtn();
+  btnPause.innerHTML = 'II<br>PAUSA';
+
+  btnPause.addEventListener('click', () => {
+    // Dispara ESC para alternar pause — reutiliza o listener já existente em initPauseMenu
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+
   syncFS();
   syncMusica();
 
+  container.appendChild(btnPause);
   container.appendChild(btnFS);
   container.appendChild(btnMusica);
   document.body.appendChild(container);

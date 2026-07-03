@@ -21,11 +21,12 @@
       </script>
 
    <div id="loading-screen" style="
-      position: fixed; inset: 0; z-index: 9999;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9999;
       background: rgb(148, 181, 224);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
       transition: opacity 0.5s ease;
+      -webkit-overflow-scrolling: touch;
    ">
       <div style="font-size: 14px; font-weight: 900; color: #ffffff; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px;">Bem-vindo ao</div>
       <div style="font-size: 38px; font-weight: 900; color: #1f6494; line-height: 1; margin-bottom: 4px;">HELLO KITTY</div>
@@ -34,6 +35,23 @@
          <div id="loading-bar" style="width: 5%; height: 100%; background: #f2d925; border-radius: 8px; transition: width 0.35s ease;"></div>
       </div>
       <div id="loading-text" style="font-size: 11px; font-weight: 900; color: #ffffff; text-transform: uppercase; letter-spacing: 1.5px;">Carregando...</div>
+      <button id="loading-start-btn" style="
+         display: none;
+         margin-top: 28px;
+         padding: 16px 52px;
+         font-size: 22px;
+         font-weight: 900;
+         font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
+         color: #3d405b;
+         background: #f2d925;
+         border: 3px solid #3d405b;
+         border-radius: 50px;
+         cursor: pointer;
+         box-shadow: 4px 4px 0px #3d405b;
+         letter-spacing: 1px;
+         touch-action: manipulation;
+         -webkit-tap-highlight-color: transparent;
+      ">JOGAR</button>
    </div>
 
    <div id="webgl-output">
