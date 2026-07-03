@@ -1,6 +1,6 @@
 // buttons.js
 import { CONFIG } from "./config.js";
-import GUI from "../../libs/util/dat.gui.module.js";
+import GUI from "../libs/util/dat.gui.module.js";
 import { updateLightVolume } from "./light.js";
 
 // A fonte fofa e arredondada oficial do seu jogo
@@ -144,7 +144,7 @@ export function initUI(scene, light) {
       altitudeParams.altitude = Math.round(y);
     },
 
-    showGameOver() {
+    showGameOver(onRestart) {
       if (document.getElementById("game-arcade-over")) return;
 
       const avisoMorteAntigo = document.getElementById("ui-container-morte");
@@ -183,7 +183,14 @@ export function initUI(scene, light) {
         cursor: pointer; box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out;
         font-family: ${FONTE_PADRAO}; letter-spacing: 0.5px;
       `;
-      btnRestart.addEventListener("click", () => globalThis.location.reload());
+      btnRestart.addEventListener("click", () => {
+        if (onRestart) {
+          gameOverOverlay.remove();
+          onRestart();
+        } else {
+          globalThis.location.reload();
+        }
+      });
 
       // Efeito de clique físico tridimensional no botão
       btnRestart.addEventListener("mousedown", () => {
@@ -550,6 +557,10 @@ export function initPauseMenu({
     toggleDisplay: (value) => {
       if (startOverlay.style.display !== "none") return;
       pauseOverlay.style.display = value ? "flex" : "none";
+    },
+    showStartScreen: () => {
+      pauseOverlay.style.display = "none";
+      startOverlay.style.display = "flex";
     },
   };
 }

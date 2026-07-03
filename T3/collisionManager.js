@@ -105,6 +105,15 @@ export class CollisionManager {
     }
   }
 
+  reset() {
+    this.score = 0;
+    this.life = 0;
+    if (globalThis._gameStats) {
+      if (this.type === "enemy") globalThis._gameStats.enemy = 0;
+      if (this.type === "player") globalThis._gameStats.player = 0;
+    }
+  }
+
   getBoundingBox(target) {
     if (target.bb) {
       return target.bb;

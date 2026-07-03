@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { OBJLoader } from "../../build/jsm/loaders/OBJLoader.js";
-import { MTLLoader } from "../../build/jsm/loaders/MTLLoader.js";
+import { OBJLoader } from "../build/jsm/loaders/OBJLoader.js";
+import { MTLLoader } from "../build/jsm/loaders/MTLLoader.js";
 
 export function carregarAviaoInimigo() {
   return new Promise((resolve) => {
