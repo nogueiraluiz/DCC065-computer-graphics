@@ -5,7 +5,10 @@ import { mouse } from './input.js';
 const FONT = "'Arial Rounded MT Bold', sans-serif";
 
 function isMobileDevice() {
-  return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  const ua = navigator.userAgent || navigator.vendor || '';
+  const isMobileUA = /android|iphone|ipad|ipod|iemobile|blackberry|opera mini/i.test(ua);
+  const isCoarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  return isMobileUA || isCoarsePointer;
 }
 
 export function initMobileControls() {

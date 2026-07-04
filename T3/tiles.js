@@ -20,6 +20,7 @@
 
 import * as THREE from "three";
 import { criaArvore } from "./arvore.js";
+import { createTerrainMaterial } from "./terrainMaterial.js";
 
 // Estrutura simples para representar gradientes 3D usados no Perlin.
 function Grad(x, y, z) {
@@ -76,40 +77,17 @@ function fbm(ni, nj, options) {
   }
 
 
-  // Normaliza o resultado para o intervalo esperado e converte para altura real.
+  // Normaliza o resultado para o intervalo esperado.
   const normalized = Math.max(-1, Math.min(1, value / maxAmp));
-  return options.minHeight + ((normalized + 1) * 0.5) * (options.maxHeight - options.minHeight);
+
+  // Exagera levemente os extremos: redistribui os valores para longe da
+  // mediana, tornando picos mais altos e vales mais fundos (para lagos com
+  // mais profundidade) sem esticar o relevo por igual em toda a faixa.
+  const EXAGGERATION_EXPONENT = 0.8;
+  const shaped = Math.sign(normalized) * Math.pow(Math.abs(normalized), EXAGGERATION_EXPONENT);
+
+  return options.minHeight + ((shaped + 1) * 0.5) * (options.maxHeight - options.minHeight);
 }
-
-/**
- * Retorna a cor do plane a partir da altura normalizada.
- *
- * @param {number} t
- * @returns {[number, number, number]}
- */
-function samplePlaneColor(t) {
-  // Altitudes muito altas viram neve.
-  if (t > 0.8) {
-    return [1, 1, 1];
-  }
-
-  // Altitudes intermediárias altas viram rocha.
-  if (t > 0.7) {
-    return [0.4, 0.4, 0.4];
-  }
-
-  // Altitudes intermediárias viram terra exposta.
-  if (t > 0.55) {
-    return [0.45, 0.32, 0.18];
-  }
-
-  if (t > 0.3) {
-    return [0.1, 0.4, 0.15];
-  }
-
-  return [0.05, 0.2, 0.1]; // Altitudes baixas viram vegetação densa.
-}
-// Regiões baixas permanecem verdes.
 
 const Terrain = createTerrain(THREE);
 
@@ -304,8 +282,8 @@ const TILE_SEGMENTS = 63;
 const TILE_SCROLL_SPEED = 50;
 
 /** Amplitude máxima das montanhas em relação ao plano base. */
-const MAX_HEIGHT = 80;
-const MIN_HEIGHT = -20;
+const MAX_HEIGHT = 95;
+const MIN_HEIGHT = -35;
 
 // ---------------------------------------------------------------------------
 // Configuração das árvores
@@ -323,7 +301,6 @@ const TREE_MIN_DIST = 30;
 
 /** Faixa de altitude em que árvores podem nascer. Fora dela é rocha ou vale seco. */
 const TREE_MAX_HEIGHT = 40;
-const TREE_MIN_HEIGHT = -20;
 
 /** Inclinação máxima do terreno para permitir o nascimento de árvores. */
 const TREE_MAX_SLOPE_DEG = 20;
@@ -332,13 +309,18 @@ const TREE_MAX_SLOPE_DEG = 20;
 const TREE_BASE_OFFSET = 2;
 
 // ---------------------------------------------------------------------------
-// Material compartilhado entre os dois tiles
+// Material compartilhado entre os dois tiles — shader TSL com blend de
+// texturas por altura/inclinação e água embutida (ver terrainMaterial.js).
 // ---------------------------------------------------------------------------
 
-const terrainMaterial = new THREE.MeshLambertMaterial({
-  color: "rgb(255, 255, 255)",
-  vertexColors: true,
-});
+const { material: terrainMaterial, waterLevel: WATER_LEVEL } = createTerrainMaterial(MIN_HEIGHT, MAX_HEIGHT);
+
+/**
+ * Altitude mínima em que árvores podem nascer: um pouco acima do nível da
+ * água, para que a vegetação não nasça dentro dos lagos agora renderizados
+ * pelo shader do terreno.
+ */
+const TREE_MIN_HEIGHT = WATER_LEVEL + 5;
 
 // ---------------------------------------------------------------------------
 // Semente do ruído — terreno igual a cada execução
@@ -505,11 +487,12 @@ function rebuildTerrain(tile, frontEdgeHeights) {
     ySegments: TILE_SEGMENTS,
     maxHeight: MAX_HEIGHT,
     minHeight: MIN_HEIGHT,
-    frequency: 2,
+    // Frequência mais baixa = feições (montanhas) mais largas e mais espaçadas.
+    frequency: 1.3,
   });
 
-  // Aplica coloração por altura antes de plantar as árvores.
-  applyHeightColors(terrainGroup);
+  // Coloração e água agora são feitas inteiramente pelo shader TSL do
+  // material (terrainMaterial.js) — não há mais coloração por vértice na CPU.
 
   // Planta árvores sobre a malha gerada.
   plantTrees(tile, terrainGroup.children[0].geometry, cols);
@@ -614,43 +597,6 @@ function rebuildTerrain(tile, frontEdgeHeights) {
   }
 
 
-  /**
-   * Aplica coloração discreta ao plane com base na altitude normalizada.
-   *
-   * Faixas:
-   *   - t > 0.90 -> branco
-   *   - 0.65 < t <= 0.90 -> marrom
-   *   - t <= 0.65 -> verde
-   *
-   * Onde t é a altura normalizada no intervalo [0, 1].
-   *
-   * @param {THREE.Group} terrainGroup
-   */
-  function applyHeightColors(terrainGroup) {
-    // Obtém a malha do terreno para criar um atributo de cor por vértice.
-    const mesh = terrainGroup.children[0];
-    if (!mesh) return;
-
-    // Lê a geometria para mapear a cor de cada vértice pela sua altitude.
-    const geometry = mesh.geometry;
-    const positions = geometry.attributes.position;
-    const count = positions.count;
-    const colors = new Float32Array(count * 3);
-
-    // Para cada vértice, calcula uma cor com base na altura normalizada.
-    for (let i = 0; i < count; i++) {
-      const height = positions.getZ(i);
-      const t = Math.min(1, Math.max(0, (height - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT)));
-      const [r, g, b] = samplePlaneColor(t);
-      colors[i * 3] = r;
-      colors[i * 3 + 1] = g;
-      colors[i * 3 + 2] = b;
-    }
-
-    // Anexa o atributo de cor para que o material use as cores por vértice.
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geometry.attributes.color.needsUpdate = true;
-  }
 
   /**
    * Planta árvores no tile respeitando altura, inclinação e distância mínima.

@@ -23,7 +23,7 @@ import { initMobileControls } from "./mobile.js";
 const BASE_COLOR = "rgb(148, 181, 224)";
 let scene = new THREE.Scene();
 scene.fog = new THREE.Fog(BASE_COLOR, 1, 1200);
-let renderer = startRenderer(BASE_COLOR);
+let renderer = await startRenderer(BASE_COLOR);
 
 // Painel de FPS no canto da tela
 const stats = new Stats();
@@ -378,11 +378,17 @@ function resetGame() {
   clock.getDelta();
 }
 
+// Teto de delta por frame: evita que um hitch (aba em segundo plano, GC, troca
+// de aba por muito tempo) jogue um delta gigante direto na física do avião,
+// câmera e lerps — o que causava "espasmos"/piruetas ao voltar para a página,
+// piorado em gameSpeed 2x/3x (scaledDelta = delta * gameSpeed amplifica ainda mais).
+const MAX_DELTA = 1 / 15;
+
 // Inicia o loop do jogo
 render();
 
 function render() {
-  const delta = clock.getDelta();
+  const delta = Math.min(clock.getDelta(), MAX_DELTA);
 
   if (!isPaused) {
     const scaledDelta = delta * gameSpeed;
