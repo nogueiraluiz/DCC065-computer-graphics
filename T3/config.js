@@ -62,6 +62,17 @@ export const CONFIG = {
     },
   },
 
+  armas: {
+    limiteTiros: 20, // Substitui a constante solta
+  },
+  
+  itens: {
+    distanciaAtracao: 120, // Distância onde a Hello Kitty começa a ser "puxada"
+    distanciaColeta: 8, // Distância mínima para sumir e curar
+    velocidadeAtracao: 8.5, // Força/Velocidade do efeito atrator (lerp)
+    porcentagemCura: 25, // Quanto recupera da barra (25%)
+  },
+
   // === CONFIGURAÇÕES DE TEMPO E VELOCIDADES DE MODOS ===
   modos: {
     tempoModoEspecial: 10,
@@ -72,5 +83,5 @@ export const CONFIG = {
     velocidadeTecla3: 2 * VELOCIDADE_PADRAO,
   },
 
-  DISABLE_START_MENU: false
+  DISABLE_START_MENU: false,
 };
