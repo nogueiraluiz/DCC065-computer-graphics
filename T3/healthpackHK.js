@@ -1,6 +1,6 @@
 // healthpackHK.js
 import * as THREE from "three";
-import { STLLoader } from "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/jsm/loaders/STLLoader.js";
+import { STLLoader } from "../../build/jsm/loaders/STLLoader.js";
 
 class HealthpackHK {
   constructor(scene) {

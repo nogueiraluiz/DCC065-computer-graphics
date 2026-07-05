@@ -7,12 +7,85 @@
  */
 
 import * as THREE from 'three';
+import { MeshToonNodeMaterial } from 'three/webgpu';
+import { Fn, mix, smoothstep, uniform, vec2, positionGeometry, mx_fractal_noise_float, mx_rotate2d } from 'three/tsl';
 
 /** Cores possíveis para as folhas das árvores. */
 const COR_FOLHA = ["#738417", "#2e6f40", "#388347", "#BF5B05", "#92780A"];
 
 // Material de madeira compartilhado entre todas as instâncias (criado uma única vez)
 const madeira = new THREE.MeshToonMaterial({color: "brown"});
+
+/**
+ * Cria o material das folhas com um shader TSL: um ruído bem pronunciado
+ * quebra a cor lisa em manchas claras/escuras, simulando o aspecto grumoso
+ * de uma copa cheia de folhas — sem usar nenhuma textura de imagem.
+ *
+ * Aleatorização: como as folhas de cada tipo de árvore reaproveitam a mesma
+ * geometria compartilhada (`geomFolha1`, `geomFolha6`, etc.), o ruído — que
+ * depende só da posição local do vértice — ficaria idêntico em toda árvore
+ * do mesmo tipo. Por isso cada árvore sorteia seu próprio deslocamento,
+ * escala e contraste de ruído, tornando cada copa visualmente diferente.
+ *
+ * Tudo isso (cor de base incluída) é passado como `uniform`, nunca como
+ * constante presa no grafo do nó — assim toda árvore continua reaproveitando
+ * o mesmo shader já compilado; só os valores de entrada mudam por instância.
+ *
+ * @param {string} hexColor
+ * @returns {THREE.MeshToonNodeMaterial}
+ */
+function criaMaterialFolha(hexColor) {
+  const material = new MeshToonNodeMaterial();
+
+  // Mesmo escolhendo a mesma cor da paleta (COR_FOLHA só tem 5 opções), cada
+  // árvore recebe um pequeno desvio de matiz/luminosidade — assim nunca duas
+  // árvores acabam com o EXATO mesmo tom de verde só por coincidência.
+  const baseColorObj = new THREE.Color(hexColor);
+  const hsl = { h: 0, s: 0, l: 0 };
+  baseColorObj.getHSL(hsl);
+  hsl.h = (hsl.h + (Math.random() - 0.5) * 0.1 + 1) % 1;
+  hsl.l = THREE.MathUtils.clamp(hsl.l + (Math.random() - 0.5) * 0.16, 0.12, 0.75);
+  baseColorObj.setHSL(hsl.h, hsl.s, hsl.l);
+  const baseColor = uniform(baseColorObj);
+
+  // Sorteados uma vez por árvore, na criação do material. Faixas bem largas
+  // e um contraste forte de propósito — o objetivo não é só deslocar o mesmo
+  // padrão, e sim mudar a "personalidade" dele (manchas finas vs. enormes,
+  // suaves vs. duras, giradas em ângulos diferentes) para que fique
+  // inconfundível mesmo à distância da câmera do jogo.
+  const noiseOffset = uniform(new THREE.Vector2(
+    Math.random() * 200 - 100,
+    Math.random() * 200 - 100,
+  ));
+  const noiseRotationDeg = uniform(Math.random() * 360);
+  const noiseScale = uniform(0.4 + Math.random() * 3.6); // 0.4 .. 4.0 — manchas enormes ou bem finas
+  const noiseOctaves = uniform(2 + Math.floor(Math.random() * 3)); // 2, 3 ou 4
+  const clumpWidth = uniform(0.05 + Math.random() * 0.3); // transição dura ou suave
+  const darkFactor = uniform(0.2 + Math.random() * 0.3); // 0.20 .. 0.50 — mais escuro
+  const lightFactor = uniform(1.2 + Math.random() * 0.7); // 1.20 .. 1.90 — mais claro
+
+  material.colorNode = Fn(() => {
+    // Projeta a posição local (inclinando um pouco o eixo Y na amostragem)
+    // para que o ruído varie tanto ao redor da copa quanto entre as camadas,
+    // depois gira e desloca pelo ângulo/offset sorteados desta árvore.
+    const projected = vec2(
+      positionGeometry.x.add(positionGeometry.y.mul(0.7)),
+      positionGeometry.z,
+    );
+    const leafCoord = mx_rotate2d(projected, noiseRotationDeg).add(noiseOffset).mul(noiseScale);
+
+    const leafNoise = mx_fractal_noise_float(leafCoord, noiseOctaves, 2.0, 0.5, 1.0);
+    // Transição estreita (em vez de suave) para virar manchas bem definidas,
+    // como se fossem tufos de folhas diferentes, não um gradiente contínuo.
+    const clump = smoothstep(clumpWidth.negate(), clumpWidth, leafNoise);
+
+    const darkLeaf = baseColor.mul(darkFactor);
+    const lightLeaf = baseColor.mul(lightFactor);
+    return mix(darkLeaf, lightLeaf, clump);
+  })();
+
+  return material;
+}
 /** Escalas possíveis — sorteadas aleatoriamente a cada criação. */
 const ESCALAS_POSSIVEIS = [0.75, 1, 1.5, 1.75];
 
@@ -51,7 +124,7 @@ const geomFolha7  = new THREE.SphereGeometry(1.5);             // copa secundár
  */
 export function criaArvore(tipo) {
   const corAleatorio   = COR_FOLHA[Math.floor(Math.random() * COR_FOLHA.length)];
-  const folha          = new THREE.MeshToonMaterial({color: corAleatorio});
+  const folha          = criaMaterialFolha(corAleatorio);
   const escalaSorteada = ESCALAS_POSSIVEIS[Math.floor(Math.random() * ESCALAS_POSSIVEIS.length)];
 
   let object;

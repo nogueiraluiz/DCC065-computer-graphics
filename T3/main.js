@@ -24,7 +24,7 @@ import { GerenciadorAudio } from "./barulhos.js";
 const BASE_COLOR = "rgb(148, 181, 224)";
 let scene = new THREE.Scene();
 scene.fog = new THREE.Fog(BASE_COLOR, 1, 1200);
-let renderer = startRenderer(BASE_COLOR);
+let renderer = await startRenderer(BASE_COLOR);
 
 // Painel de FPS no canto da tela
 const stats = new Stats();
