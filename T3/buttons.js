@@ -275,6 +275,54 @@ export function initUI(scene, light) {
       mainContainer.appendChild(quickBtn);
       document.body.appendChild(mainContainer);
     },
+    showVictoryScreen() {
+      if (document.getElementById("game-arcade-victory")) return;
+
+      const victoryOverlay = document.createElement("div");
+      victoryOverlay.id = "game-arcade-victory";
+      victoryOverlay.style.cssText = `
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background-color: rgba(148, 181, 224, 0.7); z-index: 4000; font-family: ${FONTE_PADRAO};
+      `;
+
+      const panel = document.createElement("div");
+      panel.style.cssText = `
+        display: flex; flex-direction: column; align-items: center; gap: 24px;
+        min-width: 360px; padding: 40px; border-radius: 25px; background-color: #fbf8f3;
+        border: 4px solid #3d405b; box-shadow: 8px 8px 0px #3d405b; text-align: center;
+        font-family: ${FONTE_PADRAO};
+      `;
+
+      const title = document.createElement("div");
+      title.innerHTML = `
+        <span style="color: #e06187; font-size: 38px; font-weight: 900; letter-spacing: 2px; font-family: ${FONTE_PADRAO}; text-transform: uppercase; display: block;">VITÓRIA!</span>
+        <div style="font-size: 20px; font-weight: 800; color: #3d405b; margin-top: 14px; line-height: 1.4; font-family: ${FONTE_PADRAO};">
+          Parabéns, a Hello Kitty salvou o mundo da invasão alienígena!
+        </div>
+      `;
+
+      const btnPlayAgain = document.createElement("button");
+      btnPlayAgain.textContent = "JOGAR NOVAMENTE";
+      btnPlayAgain.style.cssText = `
+        width: 100%; padding: 14px 28px; font-size: 14px; font-weight: 900; color: #3d405b;
+        background-color: #f2d925; border: 3px solid #3d405b; border-radius: 12px;
+        cursor: pointer; box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out;
+        font-family: ${FONTE_PADRAO}; letter-spacing: 0.5px;
+      `;
+      btnPlayAgain.addEventListener("click", () =>
+        globalThis.location.reload(),
+      );
+
+      btnPlayAgain.addEventListener("mousedown", () => {
+        btnPlayAgain.style.transform = "translate(2px, 2px)";
+        btnPlayAgain.style.boxShadow = "2px 2px 0px #3d405b";
+      });
+
+      panel.appendChild(title);
+      panel.appendChild(btnPlayAgain);
+      victoryOverlay.appendChild(panel);
+      document.body.appendChild(victoryOverlay);
+    },
   };
 }
 

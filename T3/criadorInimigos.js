@@ -9,39 +9,98 @@ export class CriadorInimigos {
     this.tempoInimigo = 0;
     this.velocidadePerseguicao = CONFIG.inimigos.velocidadePerseguicao;
     this.velocidadeZigueZague = CONFIG.inimigos.velocidadeZigueZague;
+
+    this.poolMinions = [];
+    this.bossUnico = null;
+    this.inicializado = false;
   }
 
-  async criarInimigoAleatorio(x, y, z) {
-    const tipoInimigo = Math.random() < 0.5 ? "alien" : "ovni";
-    let aviaoMesh;
+  async inicializarPool(quantidadeCopias = 8) {
+    if (this.inicializado) return;
+    try {
+      for (let i = 0; i < quantidadeCopias; i++) {
+        const tipoInimigo = i % 2 === 0 ? "alien" : "ovni";
+        const aviaoMesh =
+          tipoInimigo === "alien"
+            ? await carregarAviaoInimigo()
+            : await carregarAviaoInimigo2();
 
-    if (tipoInimigo === "alien") {
-      aviaoMesh = await carregarAviaoInimigo();
-    } else {
-      aviaoMesh = await carregarAviaoInimigo2();
+        aviaoMesh.position.set(0, -500, 0);
+        aviaoMesh.visible = false;
+        this.scene.add(aviaoMesh);
+
+        const esc = CONFIG.boss.multiplicadores[tipoInimigo].escalaMinion;
+        aviaoMesh.scale.set(esc, esc, esc);
+
+        this.poolMinions.push({
+          mesh: aviaoMesh,
+          bb: new THREE.Box3().setFromObject(aviaoMesh),
+          ativo: false,
+          caindo: false,
+          velocidadeQuedaY: 0,
+          velocidadeGiro: 0,
+          tipo: tipoInimigo,
+          cantoOriginalX: 0,
+          posicaoZOriginal: CONFIG.inimigos.posicaoZCombate,
+          offsetZAtual: 500,
+          indice: i,
+        });
+      }
+
+      const bossMesh = await carregarAviaoInimigo();
+      bossMesh.position.set(0, -500, 0);
+      bossMesh.visible = false;
+      this.scene.add(bossMesh);
+
+      const escBoss = CONFIG.boss.multiplicadores.alien.escalaBoss;
+      bossMesh.scale.set(escBoss, escBoss, escBoss);
+
+      this.bossUnico = {
+        mesh: bossMesh,
+        bb: new THREE.Box3().setFromObject(bossMesh),
+        ativo: false,
+        caindo: false,
+        velocidadeQuedaY: 0,
+        velocidadeGiro: 0,
+        tipo: "alien",
+        isBoss: true,
+        isMinion: false,
+        life: CONFIG.boss.bossVida,
+        cantoOriginalX: 0,
+        // CORREÇÃO: Agora usa o novo Z mais recuado vindo do config.js
+        posicaoZOriginal: CONFIG.boss.posicaoZCombateBoss,
+        offsetZAtual: 500,
+        indice: 99,
+      };
+
+      this.inicializado = true;
+      console.log(
+        "[POOL] Sistema síncrono carregado com movimentação original.",
+      );
+    } catch (error) {
+      console.error("[POOL] Erro fatal no carregamento:", error);
     }
+  }
 
-    aviaoMesh.position.set(x, y, z);
-    aviaoMesh.visible = false;
+  // CORRIGIDO: Agora recebe a instância do avião do jogador para calcular o spawn relativo correto
+  ativarBossFinal(x, y, aviaoJogador) {
+    if (!this.inicializado || !this.bossUnico || !aviaoJogador) return null;
 
-    this.scene.add(aviaoMesh);
+    const referencaZ = aviaoJogador.position.z;
+    this.bossUnico.mesh.position.set(x, y, referencaZ + 500);
+    this.bossUnico.mesh.rotation.set(0, 0, 0);
+    this.bossUnico.mesh.visible = true;
+    this.bossUnico.ativo = true;
+    this.bossUnico.caindo = false;
+    this.bossUnico.life = CONFIG.boss.bossVida;
+    this.bossUnico.offsetZAtual = 500;
+    this.bossUnico.bb.setFromObject(this.bossUnico.mesh);
 
-    return {
-      mesh: aviaoMesh,
-      bb: new THREE.Box3().setFromObject(aviaoMesh),
-      ativo: false,
-      caindo: false,
-      velocidadeQuedaY: 0,
-      velocidadeGiro: 0,
-      tipo: tipoInimigo,
-      cantoOriginalX: x,
-      posicaoZOriginal: z,
-      offsetZAtual: z,
-    };
+    return this.bossUnico;
   }
 
   atualizarMovimento(scaledDelta, aviaoMesh, camera, listaInimigos) {
-    if (!aviaoMesh || !listaInimigos) return;
+    if (!aviaoMesh || !listaInimigos || !this.inicializado) return;
 
     this.tempoInimigo += scaledDelta;
     const fovRadianos = (camera.fov * Math.PI) / 180;
@@ -61,7 +120,7 @@ export class CriadorInimigos {
       inimigo.visible = true;
 
       if (inimigoTarget.caindo) {
-        const forcaGravidade = CONFIG.inimigos.gravidadeQueda || 280;
+        const forcaGravidade = CONFIG.inimigos.gravidadeQueda || 300;
         inimigoTarget.velocidadeQuedaY += scaledDelta * forcaGravidade;
         inimigo.position.y -= inimigoTarget.velocidadeQuedaY * scaledDelta;
 
@@ -69,14 +128,14 @@ export class CriadorInimigos {
         inimigo.rotation.z += inimigoTarget.velocidadeGiro * 2.5 * scaledDelta;
 
         inimigo.position.z = aviaoMesh.position.z + inimigoTarget.offsetZAtual;
-
         inimigoTarget.bb.makeEmpty();
         return;
       }
 
-      const i = inimigoTarget.indice;
+      const i = inimigoTarget.isBoss ? 99 : inimigoTarget.indice;
       const ordem = inimigosAtivos.indexOf(inimigoTarget);
 
+      // --- MOVIMENTAÇÃO ORIGINAL EM Z (APROXIMAÇÃO DE 500 ATÉ O JOGADOR) ---
       inimigoTarget.offsetZAtual = THREE.MathUtils.lerp(
         inimigoTarget.offsetZAtual,
         inimigoTarget.posicaoZOriginal,
@@ -84,6 +143,7 @@ export class CriadorInimigos {
       );
       inimigo.position.z = aviaoMesh.position.z + inimigoTarget.offsetZAtual;
 
+      // --- LIMITES EM X BASEADOS NO MONITOR ---
       const distanciaFixaCamera = 150 + inimigoTarget.offsetZAtual;
       const metadeAlturaVisivel =
         Math.tan(fovRadianos / 2) * distanciaFixaCamera;
@@ -102,6 +162,7 @@ export class CriadorInimigos {
         direcaoSinal *
         Math.sin(this.tempoInimigo * variacaoVelocidade) *
         amplitudeX;
+      destinoX = THREE.MathUtils.clamp(destinoX, -65, 65);
 
       let posXAnterior = inimigo.position.x;
       inimigo.position.x = THREE.MathUtils.lerp(
@@ -110,18 +171,19 @@ export class CriadorInimigos {
         scaledDelta * this.velocidadePerseguicao,
       );
 
+      // --- SEPARAÇÃO VERTICAL EM Y (MANTÉM ENTRE 85 E 115) ---
       const centroTelaY = CONFIG.input.planeBaseY;
       const novaDistanciaY = 24;
 
       let offsetY = 0;
-      if (ativosNaTela > 1 && ordem !== -1) {
+      if (ativosNaTela > 1 && ordem !== -1 && !inimigoTarget.isBoss) {
         offsetY = (ordem === 0 ? -0.5 : 0.5) * novaDistanciaY;
       }
 
       const flutuacaoOrganica = Math.sin(this.tempoInimigo * 2 + i) * 1.5;
-      const destinoY = centroTelaY + offsetY + flutuacaoOrganica;
+      let destinoY = centroTelaY + offsetY + flutuacaoOrganica;
+      destinoY = THREE.MathUtils.clamp(destinoY, 85, 115);
 
-      // Proteção contra delta de pausa travando a nave em Y flutuante fora de órbita
       inimigo.position.y = THREE.MathUtils.lerp(
         inimigo.position.y,
         destinoY,
@@ -139,8 +201,10 @@ export class CriadorInimigos {
       inimigoTarget.bb.setFromObject(inimigo);
     });
 
-    if (ativosNaTela < 2) {
-      const reservas = listaInimigos.filter((inimigo) => !inimigo.ativo);
+    if (ativosNaTela < 2 && !globalThis._estadoGlobalDoJogo.jogoVencido) {
+      const reservas = listaInimigos.filter(
+        (inimigo) => !inimigo.ativo && !inimigo.isBoss,
+      );
 
       if (reservas.length > 0) {
         const proximoReserva =
@@ -150,11 +214,13 @@ export class CriadorInimigos {
           const distanciaSpawnZ = 950;
           const borderSpawnX =
             Math.tan(fovRadianos / 2) * distanciaSpawnZ * camera.aspect;
-          const bordaNascimentoX =
+
+          let bordaNascimentoX =
             Math.random() < 0.5 ? -borderSpawnX * 0.85 : borderSpawnX * 0.85;
+          bordaNascimentoX = THREE.MathUtils.clamp(bordaNascimentoX, -65, 65);
 
           proximoReserva.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
-          proximoReserva.offsetZAtual = CONFIG.inimigos.distanciaSpawnZ;
+          proximoReserva.offsetZAtual = 500;
 
           proximoReserva.caindo = false;
           proximoReserva.velocidadeQuedaY = 0;
@@ -164,7 +230,7 @@ export class CriadorInimigos {
           proximoReserva.mesh.position.set(
             bordaNascimentoX,
             CONFIG.input.planeBaseY,
-            aviaoMesh.position.z + CONFIG.inimigos.distanciaSpawnZ,
+            aviaoMesh.position.z + 500,
           );
 
           proximoReserva.cantoOriginalX = bordaNascimentoX;

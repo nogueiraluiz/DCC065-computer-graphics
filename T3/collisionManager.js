@@ -14,17 +14,15 @@ export class CollisionManager {
 
   _registerHit(target) {
     if (this.type === "enemy") {
-      globalThis._estadoGlobalDoJogo.inimigosAbatidosContador += 1;
+      // IMPORTANTE: Removeu o "target.life = 0" daqui de dentro!
+      // A vida agora é controlada estritamente pelo dano do laser.
+
       globalThis._gameStats.enemy =
         globalThis._estadoGlobalDoJogo.inimigosAbatidosContador;
       this.uiCallbacks.updateScore?.(globalThis._gameStats.enemy);
-      if (target) {
-        target.life = 0;
-      }
     }
 
     if (this.type === "player") {
-      // CONSISTÊNCIA GLOBAL: Soma o dano diretamente na variável do config centralizado
       globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao += 1;
       globalThis._gameStats.player =
         globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao;
@@ -80,16 +78,14 @@ export class CollisionManager {
             }
           }
 
-          if (typeof target.takeDamage === "function") {
-            target.takeDamage(10);
-          } else if (
-            descobreMesh.userData &&
-            typeof descobreMesh.userData.takeDamage === "function"
-          ) {
-            descobreMesh.userData.takeDamage(10);
+          // === SISTEMA DE DANO SELETIVO ===
+          if (target.isBoss) {
+            // Se for o Boss, tira 10 de HP por tiro (Como ele tem 200 HP, precisará de 20 tiros)
+            target.life -= 10;
           } else {
-            if (target.life !== undefined) target.life -= 50;
-            if (descobreMesh.life !== undefined) descobreMesh.life -= 50;
+            // Se for um minion normal, zera a vida dele imediatamente (morre com 1 tiro)
+            target.life = 0;
+            if (descobreMesh.life !== undefined) descobreMesh.life = 0;
           }
 
           this._registerHit(target);

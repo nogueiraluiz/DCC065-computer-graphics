@@ -6,16 +6,38 @@ const VELOCIDADE_PADRAO = 0.8;
 globalThis._estadoGlobalDoJogo = {
   tirosTomadosPeloAviao: 0,
   inimigosAbatidosContador: 0,
+  bossAtivo: false, // Sinaliza se a batalha contra o Boss começou
+  jogoVencido: false, // Bloqueia e trava as lógicas na vitória
 };
 
 export const CONFIG = {
-  // === CONFIGURAÇÕES DOS INIMIGOS ===
+  // === CONFIGURAÇÕES DO BOSS FINAL ===
+  boss: {
+    bossVida: 200,
+    gatilhoAbates: 5,
+    // Alteração 1: Aumentado de 400 para 480 para ele recuar mais para trás em Z
+    posicaoZCombateBoss: 400,
+    multiplicadores: {
+      alien: {
+        escalaBoss: 35,
+        // Alteração 3: Reduzido de 9 para 7 para os minions ficarem levemente menores
+        escalaMinion: 7,
+      },
+      ovni: {
+        escalaBoss: 0.35,
+        // Alteração 3: Reduzido de 0.08 para 0.06 para os minions ficarem levemente menores
+        escalaMinion: 0.06,
+      },
+    },
+  },
+
+  // === CONFIGURAÇÕES DOS INIMIGOS REGULARES ===
   inimigos: {
     velocidadePerseguicao: 2,
     velocidadeZigueZague: 1.4,
     intervaloTiro: 1,
     delayPrimeiroTiro: -1.5,
-    posicaoZCombate: 140,
+    posicaoZCombate: 120, // Requisito 4: Posição e distância regulamentar de combate
     distanciaSpawnZ: 1000,
     gravidadeQueda: 300,
   },
@@ -30,54 +52,52 @@ export const CONFIG = {
 
   // === CONFIGURAÇÕES DO INPUT / CONTROLES ===
   input: {
-    smoothFactorXY: 4.5, // Amortecimento elástico da nave seguindo a mira
-    planeBaseY: 105, // Sincronizado com o seu novo valor (105) para manter o avião alto no céu
-    boundsX: 65, // Trava de limite horizontal do mouse
-    boundsY: 25, // Trava de limite vertical do mouse
+    smoothFactorXY: 4.5,
+    planeBaseY: 105,
+    boundsX: 65,
+    boundsY: 25,
   },
 
   // === CONFIGURAÇÕES DA CÂMERA ===
   camera: {
-    offsetZ: -95, // Distância que a câmera fica presa atrás do avião
-    offsetY: 0, // Altura extra da câmera em relação ao avião
-    lookAhead: 200, // Distância à frente em que a câmera foca o olhar
-    rollFactor: 0.005, // Intensidade da inclinação do horizonte nas curvas
-    xyTimeConstant: 1, // Tempo de resposta elástica do balanço lateral da câmera
-    multiplicadorBalançoX: 0.07, // Sensibilidade de acompanhamento da câmera no eixo X
-    multiplicadorBalançoY: 0.07, // Sensibilidade de acompanhamento da câmera no eixo Y
+    offsetZ: -95,
+    offsetY: 0,
+    lookAhead: 200,
+    rollFactor: 0.005,
+    xyTimeConstant: 1,
+    multiplicadorBalançoX: 0.07,
+    multiplicadorBalançoY: 0.07,
   },
 
-  // === CONFIGURAÇÕES DOS TILES DE CENÁRIO E ÁRVORES ===
   cenario: {
     tiles: {
-      tamanho: 2000, // Comprimento tridimensional absoluto de cada quarteirão (Z)
-      segmentos: 63, // Resolução geométrica da malha do relevo
-      velocidadeRolagem: 50, // Velocidade com que o chão se move para trás
-      alturaMaxima: 100, // Pico mais alto das montanhas procedurais
-      alturaMinima: -20, // Vale mais profundo do relevo
-      sementeRuido: 1337, // Semente fixa do gerador matemático (terreno sempre idêntico)
+      tamanho: 2000,
+      segmentos: 63,
+      velocidadeRolagem: 50,
+      alturaMaxima: 100,
+      alturaMinima: -20,
+      sementeRuido: 1337,
     },
     arvores: {
-      gradesColunas: 20, // Divisões na horizontal para espalhar os troncos
-      gradesLinhas: 20, // Divisões na vertical para espalhar os troncos
-      distanciaMinima: 50, // Distância física limite para uma árvore não nascer em cima da outra
-      alturaMinimaNascimento: -10, // Altitude limite para vegetação rasteira
-      alturaMaximaNascimento: 50, // Altitude máxima antes de virar rocha nua ou neve
+      gradesColunas: 20,
+      gradesLinhas: 20,
+      distanciaMinima: 50,
+      alturaMinimaNascimento: -10,
+      alturaMaximaNascimento: 50,
     },
   },
 
   armas: {
-    limiteTiros: 20, // Substitui a constante solta
-  },
-  
-  itens: {
-    distanciaAtracao: 120, // Distância onde a Hello Kitty começa a ser "puxada"
-    distanciaColeta: 8, // Distância mínima para sumir e curar
-    velocidadeAtracao: 8.5, // Força/Velocidade do efeito atrator (lerp)
-    porcentagemCura: 25, // Quanto recupera da barra (25%)
+    limiteTiros: 20,
   },
 
-  // === CONFIGURAÇÕES DE TEMPO E VELOCIDADES DE MODOS ===
+  itens: {
+    distanciaAtracao: 120,
+    distanciaColeta: 8,
+    velocidadeAtracao: 8.5,
+    porcentagemCura: 25,
+  },
+
   modos: {
     tempoModoEspecial: 10,
     tempoTransicaoOnda: 5,

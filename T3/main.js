@@ -20,17 +20,14 @@ import { startRenderer } from "./renderer.js";
 import { GerenciadorItens } from "./GerenciadorItens.js";
 import { GerenciadorAudio } from "./barulhos.js";
 
-// Cor do céu — usada tanto no fundo do renderer quanto na névoa para fundir o horizonte
 const BASE_COLOR = "rgb(148, 181, 224)";
 let scene = new THREE.Scene();
 scene.fog = new THREE.Fog(BASE_COLOR, 1, 1200);
 let renderer = startRenderer(BASE_COLOR);
 
-// Painel de FPS no canto da tela
 const stats = new Stats();
 document.getElementById("webgl-output").appendChild(stats.domElement);
 
-// FOV de 22° = zoom longo, parecido com câmera de perseguição de shoot-em-up
 let camera = new THREE.PerspectiveCamera(
   22,
   window.innerWidth / window.innerHeight,
@@ -43,131 +40,125 @@ scene.add(camera);
 
 let light = initSceneLighting(camera, scene);
 
-// Áudio Global Inicializado Seguramente com a Câmera Pronta
+// Áudio Global acoplado seguramente à câmera
 globalThis.audioGeral = new GerenciadorAudio(camera);
-
 globalThis._loadingAtivo = true;
-await globalThis.audioGeral.carregarSons();
-globalThis.audioGeral.tocarMusicaLoop("musicaLoading", 0.3);
 
 initMouseTracking();
 
-// Cria o modelo do avião e posiciona no centro da cena
 const aviaoController = criaAviao(scene);
 let aviaoMesh = aviaoController.object;
 aviaoMesh.position.set(0, CONFIG.input.planeBaseY, 0);
 
-// Target
 const targetMesh = criaTarget(scene);
 targetMesh.position.set(0, CONFIG.input.planeBaseY, 140);
 
-// População inimigo
 let tempoInimigo = 0;
 let listaInimigos = [];
-const POPULACAO_TOTAL = 5;
 
 const criadorInimigos = new CriadorInimigos(scene);
+const gerenciadorItens = new GerenciadorItens(scene);
 
-for (let i = 0; i < POPULACAO_TOTAL; i++) {
-  const ladoDoCanto = i % 2 === 0 ? -80 : 80;
-  const posicaoZFixaDesteInimigo = CONFIG.inimigos.posicaoZCombate;
-
-  const inimigoSorteado = await criadorInimigos.criarInimigoAleatorio(
-    ladoDoCanto,
-    CONFIG.input.planeBaseY,
-    posicaoZFixaDesteInimigo,
-  );
-
-  inimigoSorteado.indice = i;
-  inimigoSorteado.life = 100;
-  inimigoSorteado.destruido = false;
-  if (inimigoSorteado.mesh) {
-    inimigoSorteado.mesh.life = 100;
-  }
-
-  inimigoSorteado.offsetZAtual = posicaoZFixaDesteInimigo;
-  listaInimigos.push(inimigoSorteado);
-
-  if (i < 2) {
-    inimigoSorteado.ativo = true;
-    inimigoSorteado.mesh.visible = true;
-  }
-}
-
-// Vida dos Inimigos e do Jogador
 let inimigosAbatidos = 0;
-let contadorAbatesParaDrop = 0;
 let aviaoBB = new THREE.Box3();
 
-// Sistema de tiros
 let laserPool = new LaserPool(scene, "player", "rgb(255, 25, 140)", 80);
 let laserPoolInimigos = new LaserPool(scene, "enemy", "rgb(21, 0, 255)", 40);
 
-// UI e HUD
 const hud = initUI(scene, light);
 const inimigoCollisionManager = new CollisionManager("enemy", null, hud);
 
-// PROBLEMA 2 RESOLVIDO (Parte A): Som do Tiro dos Inimigos sincronizado estritamente dentro do cronômetro real do disparo
+// ORQUESTRADOR SEQUENCIAL SEGURO ANTI-LAG
+async function inicializarEcossistemaDoJogo() {
+  try {
+    // 1. Carrega buffers de áudio na thread secundária
+    await globalThis.audioGeral.carregarSons();
+    globalThis.audioGeral.tocarMusicaLoop("musicaLoading", 0.3);
+
+    // 2. Monta os pools síncronos na memória da GPU
+    await criadorInimigos.inicializarPool(8);
+    await gerenciadorItens.inicializarPool();
+
+    // 3. Transfere os minions estáticos criados para a fila ativa de combate
+    if (criadorInimigos.poolMinions && criadorInimigos.poolMinions.length > 0) {
+      criadorInimigos.poolMinions.forEach((minion, i) => {
+        minion.indice = i;
+        listaInimigos.push(minion);
+
+        if (i < 2) {
+          const canto = i % 2 === 0 ? -40 : 40;
+          minion.mesh.position.set(
+            canto,
+            CONFIG.input.planeBaseY,
+            CONFIG.inimigos.posicaoZCombate,
+          );
+          minion.offsetZAtual = 0;
+          minion.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
+          minion.ativo = true;
+          minion.mesh.visible = true;
+          minion.bb.setFromObject(minion.mesh);
+        }
+      });
+    }
+
+    // 4. Libera e dispara o primeiro frame estável com objetos montados!
+    render();
+  } catch (err) {
+    console.error("[FALHA CRÍTICA] Inicialização interrompida:", err);
+  }
+}
+
 function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
-  if (!aviaoMesh || !camera) return;
-  if (globalThis._shootEnabled === false) return;
+  if (!aviaoMesh || !camera || globalThis._shootEnabled === false) return;
 
   listaInimigos.forEach((inimigoTarget) => {
     if (!inimigoTarget.ativo || !inimigoTarget.mesh || inimigoTarget.caindo)
       return;
 
-    const distanciaAteCamera = inimigoTarget.mesh.position.distanceTo(
-      camera.position,
-    );
+    const dist = inimigoTarget.mesh.position.distanceTo(camera.position);
+    if (scene.fog && dist > scene.fog.far) return;
 
-    if (scene.fog && distanciaAteCamera > scene.fog.far) {
-      return;
-    }
-
-    if (
-      inimigoTarget.tempoRecarga === undefined ||
-      inimigoTarget.tempoRecarga === null
-    ) {
+    if (inimigoTarget.tempoRecarga === undefined) {
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
     }
 
     inimigoTarget.tempoRecarga += scaledDelta;
-    inimigoTarget.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
 
-    const intervaloAdaptado = CONFIG.inimigos.intervaloTiro / gameSpeed;
+    // CORREÇÃO: Escolhe o intervalo baseado se é o Boss ou um minion regular
+    const intervaloBase = inimigoTarget.isBoss
+      ? CONFIG.inimigos.intervaloTiroBoss
+      : CONFIG.inimigos.intervaloTiro;
+
+    const intervaloAdaptado = intervaloBase / gameSpeed;
 
     if (inimigoTarget.tempoRecarga >= intervaloAdaptado) {
       let direcaoAlvo = new THREE.Vector3();
       direcaoAlvo.subVectors(aviaoMesh.position, inimigoTarget.mesh.position);
 
       laserPoolInimigos.shoot(inimigoTarget.mesh.position, direcaoAlvo);
-
-      // Toca o som de tiro do alien de forma limpa e harmônica no momento do disparo físico
-      if (globalThis.audioGeral) {
-        globalThis.audioGeral.tocarEfeito("laser", 0.05); // Volume suave (5%)
-      }
+      if (globalThis.audioGeral)
+        globalThis.audioGeral.tocarEfeito("laser", 0.05);
 
       inimigoTarget.tempoRecarga = 0;
     }
   });
 }
 
-// Controle de entrada de tiros
 let estaAtirando = false;
 let tempoUltimoTiro = 0;
 const CADENCIA_TIRO = CONFIG.lasers.cadenciaJogador;
 
-globalThis.addEventListener("mousedown", (event) => {
-  if (event.button === 0) estaAtirando = true;
+globalThis.addEventListener("mousedown", (e) => {
+  if (e.button === 0) estaAtirando = true;
 });
-globalThis.addEventListener("mouseup", (event) => {
-  if (event.button === 0) estaAtirando = false;
+globalThis.addEventListener("mouseup", (e) => {
+  if (e.button === 0) estaAtirando = false;
 });
-globalThis.addEventListener("keydown", (event) => {
-  if (event.code === "Space") estaAtirando = true;
+globalThis.addEventListener("keydown", (e) => {
+  if (e.code === "Space") estaAtirando = true;
 });
-globalThis.addEventListener("keyup", (event) => {
-  if (event.code === "Space") estaAtirando = false;
+globalThis.addEventListener("keyup", (e) => {
+  if (e.code === "Space") estaAtirando = false;
 });
 globalThis.addEventListener("blur", () => {
   estaAtirando = false;
@@ -175,7 +166,7 @@ globalThis.addEventListener("blur", () => {
 
 const jogadorCollisionManager = new CollisionManager(
   "player",
-  (target, status) => {
+  (target) => {
     if (globalThis.audioGeral)
       globalThis.audioGeral.tocarEfeito("tiroTomado", 0.08);
 
@@ -187,35 +178,27 @@ const jogadorCollisionManager = new CollisionManager(
       aviaoMesh.caindo = true;
       aviaoMesh.velocidadeQuedaY = 25;
       aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
-
-      // BLOQUEIO GLOBAL DE SOM: Ativa o sinalizador que desliga a música ambiente de forma atômica
       globalThis._gameOverAtivo = true;
+      globalThis._shootEnabled = false;
 
       if (globalThis.audioGeral) {
-        globalThis.audioGeral.pararSom("musicaFundo"); // Corta na hora o HelloKittyOnlineOST
-        globalThis.audioGeral.tocarMusicaLoop("musicaMorte", 0.4); // Toca o triste EuMorri.mp3 em loop contínuo
+        globalThis.audioGeral.pararSom("musicaFundo");
+        globalThis.audioGeral.tocarMusicaLoop("musicaMorte", 1.0);
       }
-
-      globalThis._shootEnabled = false;
       hud.showMorteAviso();
     }
   },
   hud,
 );
 
-// Health pack
-const gerenciadorItens = new GerenciadorItens(scene);
-gerenciadorItens.inicializarPool();
-
 window.addEventListener(
   "resize",
-  function () {
+  () => {
     onWindowResize(camera, renderer);
     updateLightVolume(light, scene.fog.far);
   },
   false,
 );
-
 createWorldTiles(scene);
 
 const clock = new THREE.Clock();
@@ -224,14 +207,12 @@ let gameSpeed = CONFIG.modos.velocidadeJogoPadrao;
 
 if (!CONFIG.DISABLE_START_MENU) {
   const pauseMenu = initPauseMenu({
-    renderer: renderer,
+    renderer,
     getIsPaused: () => isPaused,
     setPaused: (value) => {
       isPaused = value;
       pauseMenu.toggleDisplay(value);
-      if (!value) {
-        clock.getDelta();
-      }
+      if (!value) clock.getDelta();
     },
     getGameSpeed: () => gameSpeed,
     setGameSpeed: (value) => {
@@ -242,7 +223,6 @@ if (!CONFIG.DISABLE_START_MENU) {
 
 const _direcaoTiroJogador = new THREE.Vector3();
 
-// PROBLEMA 2 RESOLVIDO (Parte B): Som do tiro do jogador amarrado firmemente na saída do laser
 function gerenciarDisparoJogador(scaledDelta) {
   tempoUltimoTiro += scaledDelta;
   if (globalThis._shootEnabled === false) return;
@@ -258,10 +238,7 @@ function gerenciarDisparoJogador(scaledDelta) {
       .normalize();
     laserPool.shoot(aviaoMesh.position, _direcaoTiroJogador);
 
-    if (globalThis.audioGeral) {
-      globalThis.audioGeral.tocarEfeito("laser", 0.08); // Volume calibrado em 8%
-    }
-
+    if (globalThis.audioGeral) globalThis.audioGeral.tocarEfeito("laser", 0.08);
     tempoUltimoTiro = 0;
   }
 }
@@ -273,22 +250,21 @@ function processarReciclagemInimigos() {
     const meshInterna = inimigoTarget.mesh;
     if (!meshInterna) return;
 
-    const foiAbatido =
-      inimigoTarget.life <= 0 ||
-      inimigoTarget.destruido === true ||
-      meshInterna.life <= 0 ||
-      (meshInterna.userData && meshInterna.userData.life <= 0);
+    // Garante que o Boss use 'life' corretamente e não caia por falta de definição
+    const vidaAtual =
+      inimigoTarget.life !== undefined ? inimigoTarget.life : 50;
+
+    const foiAbatido = vidaAtual <= 0 || inimigoTarget.destruido === true;
 
     if (foiAbatido && !inimigoTarget.caindo) {
       inimigoTarget.caindo = true;
       inimigoTarget.velocidadeQuedaY = 25;
       inimigoTarget.velocidadeGiro = Math.random() * 8 + 6;
-      if (globalThis.audioGeral) {
-        globalThis.audioGeral.tocarEfeito("alienAtingido", 0.1);
-      }
 
-      // PROBLEMA 1 RESOLVIDO: Reintroduzido o gatilho vital que registra o abate e dropa o Health Pack a cada 3 baixas
-      if (gerenciadorItens) {
+      if (globalThis.audioGeral)
+        globalThis.audioGeral.tocarEfeito("alienAtingido", 0.1);
+
+      if (gerenciadorItens && !inimigoTarget.isBoss) {
         gerenciadorItens.registrarAbate(aviaoMesh);
       }
       return;
@@ -298,62 +274,99 @@ function processarReciclagemInimigos() {
 
     if (bateuNoChao) {
       inimigoTarget.ativo = false;
-      inimigoTarget.active = false;
       inimigoTarget.caindo = false;
       meshInterna.visible = false;
-      inimigosAbatidos++;
 
-      inimigoTarget.life = 100;
+      // === SE O INIMIGO DESTRUÍDO ERA O BOSS -> VITÓRIA COMPLETA ===
+      if (inimigoTarget.isBoss) {
+        globalThis._estadoGlobalDoJogo.jogoVencido = true; // Trava o estado do jogo
+        if (hud && typeof hud.showVictoryScreen === "function") {
+          hud.showVictoryScreen();
+        }
+        if (globalThis.audioGeral) {
+          globalThis.audioGeral.sincronizarControles();
+        }
+        return;
+      }
+
+      // Lógica normal para minions regulares
+      globalThis._estadoGlobalDoJogo.inimigosAbatidosContador++;
+      inimigosAbatidos =
+        globalThis._estadoGlobalDoJogo.inimigosAbatidosContador;
+
+      if (hud && typeof hud.updateScore === "function") {
+        hud.updateScore(inimigosAbatidos);
+      }
+
+      // Reseta o minion para o pool
+      inimigoTarget.life = 50;
       inimigoTarget.destruido = false;
-      meshInterna.life = 100;
+      meshInterna.life = 50;
 
       inimigoTarget.offsetZAtual = CONFIG.inimigos.distanciaSpawnZ;
-      inimigoTarget.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
+      inimigoTarget.posicaoZOriginal =
+        CONFIG.inimigos.posiguezCombate || CONFIG.inimigos.posicaoZCombate;
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
     }
   });
+
+  // === GATILHO MAESTRO DO BOSS FINAL ===
+  if (
+    globalThis._estadoGlobalDoJogo.inimigosAbatidosContador >=
+      CONFIG.boss.gatilhoAbates &&
+    !globalThis._estadoGlobalDoJogo.bossAtivo &&
+    !globalThis._estadoGlobalDoJogo.jogoVencido &&
+    !globalThis._bossFoiInstanciado
+  ) {
+    globalThis._estadoGlobalDoJogo.bossAtivo = true;
+    globalThis._bossFoiInstanciado = true;
+
+    // Ativa passando os 3 parâmetros corretos
+    const bossFinal = criadorInimigos.ativarBossFinal(
+      0,
+      CONFIG.input.planeBaseY,
+      aviaoMesh,
+    );
+
+    if (bossFinal && !listaInimigos.includes(bossFinal)) {
+      listaInimigos.push(bossFinal);
+    }
+
+    if (globalThis.audioGeral) {
+      globalThis.audioGeral.sincronizarControles();
+    }
+    console.log("[SISTEMA] O Boss Supremo despertou!");
+  }
 }
 
-// Inicia o loop do jogo
-render();
-
 function render() {
+  // === BARREIRA ATÔMICA PREVENTIVA CONTRA MATRIZES NaN ===
+  if (!aviaoMesh || !listaInimigos || !criadorInimigos.inicializado) {
+    requestAnimationFrame(render);
+    return;
+  }
+
+  // Requisito 8: Se venceu o jogo, congela as físicas e mantém a interface UI respondendo a cliques
+  if (
+    globalThis._estadoGlobalDoJogo &&
+    globalThis._estadoGlobalDoJogo.jogoVencido
+  ) {
+    if (globalThis.audioGeral) globalThis.audioGeral.sincronizarControles();
+    stats.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(render);
+    return;
+  }
+
   const delta = clock.getDelta();
 
   if (!isPaused) {
     const scaledDelta = delta * gameSpeed;
 
-    if (
-      globalThis._estadoGlobalDoJogo &&
-      globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao >=
-        CONFIG.armas.limiteTiros &&
-      !aviaoMesh.caindo
-    ) {
-      aviaoMesh.caindo = true;
-      aviaoMesh.velocidadeQuedaY = 25;
-      aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
-      globalThis._gameOverAtivo = true;
-      globalThis._shootEnabled = false;
-
-      if (globalThis.audioGeral) {
-        globalThis.audioGeral.pararSom("musicaFundo"); // Corta a música alegre na hora
-
-        // CORREÇÃO: Mudado de 0.4 para 1.0 para a música de morte tocar bem ALTA!
-        globalThis.audioGeral.tocarMusicaLoop("musicaMorte", 1.0);
-      }
-
-      hud.showMorteAviso();
-    }
-
     if (aviaoMesh.caindo) {
       aviaoMesh.position.x += (0 - aviaoMesh.position.x) * 0.1;
-
-      if (aviaoMesh.velocidadeQuedaY === undefined)
-        aviaoMesh.velocidadeQuedaY = 5;
-      if (aviaoMesh.velocidadeGiro === undefined) aviaoMesh.velocidadeGiro = 6;
-
-      aviaoMesh.position.y -= aviaoMesh.velocidadeQuedaY * scaledDelta;
-      aviaoMesh.rotation.z += aviaoMesh.velocidadeGiro * scaledDelta;
+      aviaoMesh.position.y -= (aviaoMesh.velocidadeQuedaY || 25) * scaledDelta;
+      aviaoMesh.rotation.z += (aviaoMesh.velocidadeGiro || 6) * scaledDelta;
 
       if (aviaoMesh.position.y <= -10) {
         isPaused = true;
@@ -366,6 +379,22 @@ function render() {
     updateTiles(scaledDelta);
     updateCamera(camera, aviaoMesh, scaledDelta);
 
+    // SANITIZAÇÃO COMPLETA DA MATRIZ DA CÂMERA CONTRA TRAVAMENTOS NO AUDIOLISTENER
+    camera.updateMatrixWorld(true);
+    const mEl = camera.matrixWorld.elements;
+    let matrizBugada = false;
+    for (let k = 0; k < 16; k++) {
+      if (!Number.isFinite(mEl[k]) || Number.isNaN(mEl[k])) {
+        matrizBugada = true;
+        break;
+      }
+    }
+    if (matrizBugada) {
+      camera.position.set(0, 105, -150);
+      camera.lookAt(0, 120, 0);
+      camera.updateMatrixWorld(true);
+    }
+
     if (aviaoMesh && !aviaoMesh.caindo) {
       tempoInimigo += scaledDelta;
       criadorInimigos.atualizarMovimento(
@@ -376,40 +405,22 @@ function render() {
       );
     }
 
-    // Processamento da Cura do Item
     if (gerenciadorItens) {
-      gerenciadorItens.atualizar(scaledDelta, aviaoMesh, (quantidadeCura) => {
+      gerenciadorItens.atualizar(scaledDelta, aviaoMesh, () => {
         if (globalThis._estadoGlobalDoJogo) {
-          const tirosRecuperados = 5;
-
           globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao = Math.max(
             0,
-            globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao -
-              tirosRecuperados,
+            globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao - 5,
           );
-
           globalThis._gameStats.player =
             globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao;
-
           hud.updateLife(globalThis._gameStats.player);
-
-          if (typeof hud.updateSaldo === "function") {
-            hud.updateSaldo(
-              globalThis._gameStats.enemy,
-              globalThis._gameStats.player,
-            );
-          }
-
-          // === ADICIONADO: Som mágico com volume ideal (Mais alto que tiros, mais baixo que a OST) ===
-          if (globalThis.audioGeral) {
-            globalThis.audioGeral.tocarEfeito("fairyDust", 0.16); // Volume calibrado e destacado
-          }
+          if (globalThis.audioGeral)
+            globalThis.audioGeral.tocarEfeito("fairyDust", 0.16);
         }
-        console.log(
-          `[SINCRO CURA] Vida alterada na raiz global! Menos ${quantidadeCura}% de danos acumulados.`,
-        );
       });
     }
+
     aviaoBB.setFromObject(aviaoMesh);
     gerenciarDisparoJogador(scaledDelta);
     gerenciarDisparoInimigos(scaledDelta, aviaoMesh);
@@ -417,20 +428,9 @@ function render() {
     laserPool.update(scaledDelta, aviaoMesh, scene.fog.far);
     laserPoolInimigos.update(scaledDelta, aviaoMesh);
 
-    listaInimigos.forEach((inimigo) => {
-      if (inimigo.ativo && inimigo.mesh && inimigo.bb) {
-        if (inimigo.caindo) {
-          inimigo.bb.makeEmpty();
-        } else {
-          inimigo.bb.setFromObject(inimigo.mesh);
-        }
-      }
-    });
-
     const inimigosProntosParaColidir = listaInimigos.filter(
-      (inimigo) => inimigo.ativo && !inimigo.caindo,
+      (m) => m.ativo && !m.caindo,
     );
-
     inimigoCollisionManager.checkLaserAgainstTargets(
       laserPool.getActiveLasers(),
       inimigosProntosParaColidir,
@@ -449,9 +449,8 @@ function render() {
       );
     }
 
-    if (globalThis.audioGeral) {
-      globalThis.audioGeral.sincronizarControles();
-    }
+    if (globalThis.audioGeral)
+      globalThis.audioGeral.sincronizarControles(isPaused);
   }
 
   hud.updateAltitude(aviaoMesh.position.y);
@@ -459,3 +458,6 @@ function render() {
   requestAnimationFrame(render);
   renderer.render(scene, camera);
 }
+
+// Dispara a cadeia assíncrona blindada e sequencial
+inicializarEcossistemaDoJogo();

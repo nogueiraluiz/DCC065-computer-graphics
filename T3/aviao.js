@@ -29,14 +29,14 @@ function criaTexturaPelucia() {
 const texturaFofa = criaTexturaPelucia();
 
 // 2. Branco Puro Acetinado para as Asas, Empenagem e Leme
-const materialMetalCartoon = new THREE.MeshStandardMaterial({
-  color: new THREE.Color("#e26b8e"), // Branco neve impecável
-  metalness: 0.02, // Um toque sutil de reflexo metálico de aviação
-  roughness: 0.01, // Superfície bem polida para refletir a luz de forma limpa
+const materialMetalCartoon = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color("#e26b8e"),
+  metalness: 0.02,
+  roughness: 0.01,
   flatShading: false,
-  opacity: 10.0,
-  ior: 1.5, // Índice de refração do vidro real
-  clearcoat: 1.0, // Verniz brilhante espelhado
+  opacity: 1.0, // Corrigido de 10.0 (máximo é 1.0)
+  ior: 1.5,
+  clearcoat: 1.0,
   clearcoatRoughness: 0.0,
   transparent: true,
 });
