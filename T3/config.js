@@ -21,12 +21,12 @@ export const CONFIG = {
       alien: {
         escalaBoss: 35,
         // Alteração 3: Reduzido de 9 para 7 para os minions ficarem levemente menores
-        escalaMinion: 7,
+        escalaMinion: 12,
       },
       ovni: {
         escalaBoss: 0.35,
         // Alteração 3: Reduzido de 0.08 para 0.06 para os minions ficarem levemente menores
-        escalaMinion: 0.06,
+        escalaMinion: 0.12,
       },
     },
   },
@@ -34,7 +34,7 @@ export const CONFIG = {
   // === CONFIGURAÇÕES DOS INIMIGOS REGULARES ===
   inimigos: {
     velocidadePerseguicao: 2,
-    velocidadeZigueZague: 1.4,
+    velocidadeZigueZague: 1.2,
     intervaloTiro: 1,
     delayPrimeiroTiro: -1.5,
     posicaoZCombate: 120, // Requisito 4: Posição e distância regulamentar de combate

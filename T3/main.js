@@ -69,43 +69,71 @@ const hud = initUI(scene, light);
 const inimigoCollisionManager = new CollisionManager("enemy", null, hud);
 
 // ORQUESTRADOR SEQUENCIAL SEGURO ANTI-LAG
+// ORQUESTRADOR SEQUENCIAL SEGURO ANTI-LAG
 async function inicializarEcossistemaDoJogo() {
-  try {
-    // 1. Carrega buffers de áudio na thread secundária
-    await globalThis.audioGeral.carregarSons();
-    globalThis.audioGeral.tocarMusicaLoop("musicaLoading", 0.3);
+  const fillBar = document.getElementById("real-loading-bar-fill");
+  
+  // Mapeia uma função global que o botão de início criado no buttons.js pode disparar
+  globalThis.dispararMusicaLoadingInicial = async () => {
+    console.log("[SISTEMA] Permissão de áudio concedida. Iniciando carregamento...");
+    
+    try {
+      if (fillBar) fillBar.style.width = "15%";
+      
+      // 1. Carrega buffers de áudio na thread secundária
+      await globalThis.audioGeral.carregarSons();
+      globalThis.audioGeral.tocarMusicaLoop("musicaLoading", 0.3);
+      if (fillBar) fillBar.style.width = "40%";
 
-    // 2. Monta os pools síncronos na memória da GPU
-    await criadorInimigos.inicializarPool(8);
-    await gerenciadorItens.inicializarPool();
+      // 2. Monta os pools síncronos na memória da GPU (Processamento do OBJ/MTL)
+      await criadorInimigos.inicializarPool(8);
+      if (fillBar) fillBar.style.width = "75%";
+      
+      await gerenciadorItens.inicializarPool();
+      if (fillBar) fillBar.style.width = "90%";
 
-    // 3. Transfere os minions estáticos criados para a fila ativa de combate
-    if (criadorInimigos.poolMinions && criadorInimigos.poolMinions.length > 0) {
-      criadorInimigos.poolMinions.forEach((minion, i) => {
-        minion.indice = i;
-        listaInimigos.push(minion);
+      // 3. Transfere os minions estáticos criados para a fila ativa de combate
+      if (criadorInimigos.poolMinions && criadorInimigos.poolMinions.length > 0) {
+        criadorInimigos.poolMinions.forEach((minion, i) => {
+          minion.indice = i;
+          listaInimigos.push(minion);
 
-        if (i < 2) {
-          const canto = i % 2 === 0 ? -40 : 40;
-          minion.mesh.position.set(
-            canto,
-            CONFIG.input.planeBaseY,
-            CONFIG.inimigos.posicaoZCombate,
-          );
-          minion.offsetZAtual = 0;
-          minion.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
-          minion.ativo = true;
-          minion.mesh.visible = true;
-          minion.bb.setFromObject(minion.mesh);
-        }
-      });
+          if (i < 2) {
+            const canto = i % 2 === 0 ? -40 : 40;
+            minion.mesh.position.set(
+              canto,
+              CONFIG.input.planeBaseY,
+              CONFIG.inimigos.posicaoZCombate,
+            );
+            minion.offsetZAtual = 0;
+            minion.posiguezCombate = CONFIG.inimigos.posicaoZCombate;
+            minion.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
+            minion.ativo = true;
+            minion.mesh.visible = true;
+            minion.bb.setFromObject(minion.mesh);
+          }
+        });
+      }
+
+      if (fillBar) fillBar.style.width = "100%";
+      console.log("[SISTEMA] Todos os elementos foram pré-carregados!");
+
+      // Pequeno atraso visual para o jogador notar a barra em 100% antes de abrir o menu
+      setTimeout(() => {
+        const loadingScreen = document.getElementById("real-loading-screen");
+        const startOverlay = document.getElementById("real-start-overlay");
+
+        if (loadingScreen) loadingScreen.remove(); 
+        if (startOverlay) startOverlay.style.display = "flex"; 
+
+        // 4. Libera e dispara o primeiro frame estável com objetos montados!
+        render();
+      }, 400);
+
+    } catch (err) {
+      console.error("[FALHA CRÍTICA] Inicialização interrompida:", err);
     }
-
-    // 4. Libera e dispara o primeiro frame estável com objetos montados!
-    render();
-  } catch (err) {
-    console.error("[FALHA CRÍTICA] Inicialização interrompida:", err);
-  }
+  };
 }
 
 function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
@@ -115,27 +143,39 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
     if (!inimigoTarget.ativo || !inimigoTarget.mesh || inimigoTarget.caindo)
       return;
 
-    const dist = inimigoTarget.mesh.position.distanceTo(camera.position);
-    if (scene.fog && dist > scene.fog.far) return;
+    // Se NÃO for o boss, verifica a distância da névoa normalmente
+    if (!inimigoTarget.isBoss) {
+      const dist = inimigoTarget.mesh.position.distanceTo(camera.position);
+      if (scene.fog && dist > scene.fog.far) return;
+    }
 
-    if (inimigoTarget.tempoRecarga === undefined) {
+    // Força a inicialização segura do tempo de recarga caso seja nulo ou indefinido
+    if (
+      inimigoTarget.tempoRecarga === undefined ||
+      Number.isNaN(inimigoTarget.tempoRecarga)
+    ) {
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
     }
 
     inimigoTarget.tempoRecarga += scaledDelta;
 
-    // CORREÇÃO: Escolhe o intervalo baseado se é o Boss ou um minion regular
+    // Define a cadência baseada no tipo de inimigo
     const intervaloBase = inimigoTarget.isBoss
-      ? CONFIG.inimigos.intervaloTiroBoss
+      ? CONFIG.inimigos.intervaloTiroBoss || 0.5
       : CONFIG.inimigos.intervaloTiro;
 
     const intervaloAdaptado = intervaloBase / gameSpeed;
 
     if (inimigoTarget.tempoRecarga >= intervaloAdaptado) {
       let direcaoAlvo = new THREE.Vector3();
-      direcaoAlvo.subVectors(aviaoMesh.position, inimigoTarget.mesh.position);
+      // Calcula a direção em relação à posição do avião do jogador
+      direcaoAlvo
+        .subVectors(aviaoMesh.position, inimigoTarget.mesh.position)
+        .normalize();
 
+      // Dispara o laser do pool dos inimigos
       laserPoolInimigos.shoot(inimigoTarget.mesh.position, direcaoAlvo);
+
       if (globalThis.audioGeral)
         globalThis.audioGeral.tocarEfeito("laser", 0.05);
 
@@ -143,7 +183,6 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
     }
   });
 }
-
 let estaAtirando = false;
 let tempoUltimoTiro = 0;
 const CADENCIA_TIRO = CONFIG.lasers.cadenciaJogador;

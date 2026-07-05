@@ -340,9 +340,117 @@ export function initPauseMenu({
     setPaused(true);
   }, 10);
 
+  // =========================================================================
+  // INTERRUPÇÃO DE SEGURANÇA DE ÁUDIO (CLICK TO START)
+  // =========================================================================
+  const clickToStartOverlay = document.createElement("div");
+  clickToStartOverlay.style.cssText = `
+    position: fixed; inset: 0; display: flex; flex-direction: column; 
+    align-items: center; justify-content: center; background-color: rgb(148, 181, 224); 
+    z-index: 3000; font-family: ${FONTE_PADRAO}; user-select: none;
+  `;
+
+  const clickTitle = document.createElement("div");
+  clickTitle.innerHTML = `
+    <span style="color: #ffffff; font-size: 28px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; text-shadow: 3px 3px 0px #3d405b;">HELLO KITTY WORLD</span>
+  `;
+
+  const clickButton = document.createElement("button");
+  clickButton.textContent = "CLIQUE PARA ENTRAR";
+  clickButton.style.cssText = `
+    margin-top: 30px; padding: 16px 32px; font-size: 16px; font-weight: 900; color: #3d405b; 
+    background-color: #f2d925; border: 3px solid #3d405b; border-radius: 16px; cursor: pointer; 
+    box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out; font-family: ${FONTE_PADRAO};
+  `;
+
+  clickToStartOverlay.appendChild(clickTitle);
+  clickToStartOverlay.appendChild(clickButton);
+  document.body.appendChild(clickToStartOverlay);
+
+  // =========================================================================
+  // 1. TELA DE CARREGAMENTO REAL COM ÍCONE DA HELLO KITTY
+  // =========================================================================
+  const loadingScreen = document.createElement("div");
+  loadingScreen.id = "real-loading-screen";
+  loadingScreen.style.cssText = `
+    position: fixed; inset: 0; display: none; flex-direction: column; 
+    align-items: center; justify-content: center; background-color: rgb(148, 181, 224); 
+    z-index: 2500; font-family: ${FONTE_PADRAO}; user-select: none;
+  `;
+
+  // Elemento do Ícone / Imagem da Hello Kitty
+  const kittyIcon = document.createElement("div");
+  kittyIcon.style.cssText = `
+    width: 100px; height: 100px;
+    background-image: url('./assets/hello-kitty-icon.png'); /* Certifique-se de ter essa imagem ou use um svg/placeholder */
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+    margin-bottom: 24px;
+  `;
+
+  // Animação CSS para fazer a Hello Kitty balançar fofamente enquanto carrega
+  if (!document.getElementById("kitty-dance-style")) {
+    const styleSheet = document.createElement("style");
+    styleSheet.id = "kitty-dance-style";
+    styleSheet.textContent = `
+      @keyframes kittyBalanço {
+        0% { transform: rotate(-10deg) scale(1); }
+        100% { transform: rotate(10deg) scale(1.05); }
+      }
+      @keyframes piscarTexto {
+        from { opacity: 1; } to { opacity: 0.5; }
+      }
+    `;
+    document.head.appendChild(styleSheet);
+  }
+  kittyIcon.style.animation =
+    "kittyBalanço 0.6s infinite alternate ease-in-out";
+
+  const loadingText = document.createElement("div");
+  loadingText.textContent = "PREPARANDO MUNDO FOFO...";
+  loadingText.style.cssText = `
+    color: #ffffff; font-size: 20px; font-weight: 900; letter-spacing: 2px;
+    margin-bottom: 20px; text-shadow: 3px 3px 0px #3d405b; text-transform: uppercase;
+    animation: piscarTexto 0.8s infinite alternate;
+  `;
+
+  const barContainer = document.createElement("div");
+  barContainer.style.cssText = `
+    width: 280px; height: 24px; background: #fbf8f3; 
+    border: 4px solid #3d405b; border-radius: 12px; overflow: hidden; 
+    box-shadow: 4px 4px 0px #3d405b; position: relative;
+  `;
+
+  const fillBar = document.createElement("div");
+  fillBar.id = "real-loading-bar-fill";
+  fillBar.style.cssText = `
+    width: 0%; height: 100%; background: #e06187; /* Rosa Hello Kitty */
+    transition: width 0.1s ease-out;
+  `;
+
+  barContainer.appendChild(fillBar);
+  loadingScreen.appendChild(kittyIcon);
+  loadingScreen.appendChild(loadingText);
+  loadingScreen.appendChild(barContainer);
+  document.body.appendChild(loadingScreen);
+
+  // Gatilho inicial para burlar o bloqueio de som do navegador
+  clickButton.addEventListener("click", () => {
+    clickToStartOverlay.remove();
+    loadingScreen.style.display = "flex";
+
+    // Ativa a música de loading imediatamente via flag global mapeada no main.js
+    if (globalThis.dispararMusicaLoadingInicial) {
+      globalThis.dispararMusicaLoadingInicial();
+    }
+  });
+
+  // =========================================================================
+  // 2. TELA DE PLAY (INICIA ESCONDIDA)
+  // =========================================================================
   const startOverlay = document.createElement("div");
+  startOverlay.id = "real-start-overlay";
   startOverlay.style.cssText = `
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     background-color: rgb(148, 181, 224); z-index: 2000; user-select: none; font-family: ${FONTE_PADRAO};
   `;
 
@@ -368,26 +476,14 @@ export function initPauseMenu({
     cursor: pointer; box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out; letter-spacing: 1px;
   `;
 
-  playButton.addEventListener(
-    "mouseenter",
-    () => (playButton.style.transform = "scale(1.05)"),
-  );
-  playButton.addEventListener(
-    "mouseleave",
-    () => (playButton.style.transform = "scale(1)"),
-  );
-  playButton.addEventListener("mousedown", () => {
-    playButton.style.transform = "translate(2px, 2px)";
-    playButton.style.boxShadow = "2px 2px 0px #3d405b";
-  });
-
   playButton.addEventListener("click", () => {
     startOverlay.style.display = "none";
     setPaused(false);
+
     if (globalThis.audioGeral) {
-      globalThis._loadingAtivo = false; // Desliga a música de carregamento
+      globalThis._loadingAtivo = false;
       globalThis.audioGeral.pararSom("musicaLoading");
-      globalThis.audioGeral.tocarMusicaLoop("musicaFundo", 0.2); // Inicia HelloKittyOnlineOST
+      globalThis.audioGeral.tocarMusicaLoop("musicaFundo", 0.2);
     }
   });
 
@@ -396,6 +492,9 @@ export function initPauseMenu({
   startOverlay.appendChild(startPanel);
   document.body.appendChild(startOverlay);
 
+  // =========================================================================
+  // 3. MENU DE PAUSE INTERNO (SISTEMA PADRÃO DO ESCAPE)
+  // =========================================================================
   const pauseOverlay = document.createElement("div");
   pauseOverlay.style.cssText = `
     position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
@@ -528,7 +627,11 @@ export function initPauseMenu({
   }
 
   globalThis.addEventListener("keydown", (event) => {
-    if (startOverlay.style.display !== "none") return;
+    if (
+      startOverlay.style.display === "flex" ||
+      document.body.contains(loadingScreen)
+    )
+      return;
     if (event.key === "Escape") {
       setPaused(!getIsPaused());
       return;
@@ -557,17 +660,27 @@ export function initPauseMenu({
   });
 
   renderer.domElement.addEventListener("pointerdown", () => {
-    if (startOverlay.style.display !== "none") return;
+    if (
+      startOverlay.style.display === "flex" ||
+      document.body.contains(loadingScreen)
+    )
+      return;
     if (getIsPaused()) setPaused(false);
   });
 
   pauseOverlay.addEventListener("pointerdown", () => {
-    if (startOverlay.style.display !== "none") return;
+    if (
+      startOverlay.style.display === "flex" ||
+      document.body.contains(loadingScreen)
+    )
+      return;
     if (getIsPaused()) setPaused(false);
   });
+
   pausePanel.addEventListener("pointerdown", (event) => {
     event.stopPropagation();
   });
+
   toggleShootingButton.addEventListener("click", () => {
     globalThis._shootEnabled = !globalThis._shootEnabled;
     updateShootingButton();
@@ -601,7 +714,11 @@ export function initPauseMenu({
 
   return {
     toggleDisplay: (value) => {
-      if (startOverlay.style.display !== "none") return;
+      if (
+        startOverlay.style.display === "flex" ||
+        document.body.contains(loadingScreen)
+      )
+        return;
       pauseOverlay.style.display = value ? "flex" : "none";
     },
   };

@@ -103,10 +103,9 @@ export class CollisionManager {
     if (target.geometry) {
       return target.geometry;
     }
-    let obj = new THREE.Box3().setFromObject(target);
-    if (obj) {
-      return obj;
-    }
-    return null;
+    
+    // Altera de new THREE.Box3() para reaproveitamento estático de objeto na memória
+    _caixaAuxiliarOtimizada.setFromObject(target);
+    return _caixaAuxiliarOtimizada;
   }
 }
