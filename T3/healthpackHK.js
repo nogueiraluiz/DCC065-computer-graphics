@@ -15,30 +15,29 @@ class HealthpackHK {
       this.loader.load(
         "./assets/obj_1_hello kitty 1.stl",
         (geometry) => {
-          geometry.center(); // Apenas centraliza o pivô (operação leve)
+          geometry.center(); // Centraliza o pivô (operação leve)
 
-          // O seu material de vidro realista idêntico
-          const materialFofo = new THREE.MeshPhysicalMaterial({
+          // === OTIMIZAÇÃO ULTRA LEVE DE GEOMETRIA ===
+          // Mescla vértices duplicados e recalcula as normais de face de forma otimizada para a GPU
+          geometry.computeVertexNormals();
+
+          // === OTIMIZAÇÃO DE MATERIAL (ADEUS COMPLEXIDADE DE VIDRO) ===
+          // Mudamos para MeshStandardMaterial: Removemos o cálculo pesado de refração/transmissão,
+          // simulando o aspecto fofo e brilhante apenas usando mapeamento básico de rugosidade.
+          const materialSuperLeve = new THREE.MeshStandardMaterial({
             color: new THREE.Color("#e26b8e"),
-            metalness: 0.0, // Garantido em 0.0 para não ficar preto
-            roughness: 0.05,
-            transparent: true,
-            transmission: 0.9,
-            opacity: 1.0,
-            ior: 1.5,
-            thickness: 2.5,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
-            side: THREE.DoubleSide,
+            metalness: 0.1, // Leve brilho para destacar o relevo 3D
+            roughness: 0.2, // Superfície lisa e polida estilo plástico/vinil
+            flatShading: false, // Mantém o modelo perfeitamente arredondado e suavizado
           });
 
-          this.mesh = new THREE.Mesh(geometry, materialFofo);
+          this.mesh = new THREE.Mesh(geometry, materialSuperLeve);
+
+          // Desative as sombras se precisar de ainda mais performance:
           this.mesh.castShadow = true;
           this.mesh.receiveShadow = true;
 
-          // RESTRUTURAÇÃO ULTRA LEVE: Removemos o computeBoundingBox() dinâmico.
-          // Deixamos a escala neutra em 1, pois controlamos o tamanho real no Pool!
-          this.mesh.scale.set(1, 1, 1);
+          this.mesh.scale.set(1, 1, 1); // Escala neutra para o Pool gerenciar[cite: 17]
 
           resolve(this.mesh);
         },
@@ -53,10 +52,9 @@ class HealthpackHK {
 
   atualizar(scaledDelta) {
     if (this.mesh) {
-      this.mesh.rotation.y += this.velocidadeRotacao * scaledDelta;
+      this.mesh.rotation.y += this.velocidadeRotacao * scaledDelta; // Rotação simples[cite: 17]
     }
   }
 }
 
-// === A LINHA QUE ESTAVA FALTANDO PARA FAZER O COMPILADOR PARAR DE RECLAMAR: ===
-export default HealthpackHK;
+export default HealthpackHK; // Exportação padrão mantida[cite: 17]

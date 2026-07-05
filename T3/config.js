@@ -14,7 +14,7 @@ export const CONFIG = {
   // === CONFIGURAÇÕES DO BOSS FINAL ===
   boss: {
     bossVida: 200,
-    gatilhoAbates: 5,
+    gatilhoAbates: 15,
     // Alteração 1: Aumentado de 400 para 480 para ele recuar mais para trás em Z
     posicaoZCombateBoss: 400,
     multiplicadores: {
