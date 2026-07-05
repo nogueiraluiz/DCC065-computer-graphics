@@ -164,16 +164,17 @@ globalThis.addEventListener("blur", () => {
 const jogadorCollisionManager = new CollisionManager(
   "player",
   (target, status) => {
-    // Se atingiu o limite e o avião ainda não iniciou a queda
-    if (status.life >= CONFIG.armas.limiteTiros && !aviaoMesh.caindo) {
+    // Agora avalia os tiros lendo o estado global unificado de forma precisa
+    if (
+      globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao >=
+        CONFIG.armas.limiteTiros &&
+      !aviaoMesh.caindo
+    ) {
       aviaoMesh.caindo = true;
-      aviaoMesh.velocidadeQuedaY = 25; // Mesma velocidade de queda dos inimigos
+      aviaoMesh.velocidadeQuedaY = 25;
       aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
 
-      // Bloqueia disparos do jogador imediatamente
       globalThis._shootEnabled = false;
-
-      // Cria o aviso "Ai, eu morri" na tela
       hud.showMorteAviso();
     }
   },
@@ -326,8 +327,8 @@ function render() {
 
     updateTiles(scaledDelta);
     updateCamera(camera, aviaoMesh, scaledDelta);
-    gerenciadorItens.atualizar(scaledDelta, aviaoMesh);
 
+    // 1. Move os inimigos se o jogador estiver vivo
     if (aviaoMesh && !aviaoMesh.caindo) {
       tempoInimigo += scaledDelta;
       criadorInimigos.atualizarMovimento(
@@ -338,33 +339,41 @@ function render() {
       );
     }
 
-    if (gerenciadorItens) {
-      gerenciadorItens.atualizar(scaledDelta, aviaoMesh, (quantidadeCura) => {
-        if (aviaoMesh.userData && aviaoMesh.userData.life !== undefined) {
-          aviaoMesh.userData.life = Math.min(
-            100,
-            aviaoMesh.userData.life + quantidadeCura,
-          );
-        } else if (aviaoMesh.life !== undefined) {
-          aviaoMesh.life = Math.min(100, aviaoMesh.life + quantidadeCura);
-        }
+    // 2. UNIFICADO: Processa a física e o ganho real de vida reativo!
+   if (gerenciadorItens) {
+     gerenciadorItens.atualizar(scaledDelta, aviaoMesh, (quantidadeCura) => {
+       // REPARO SEGURO BASEADO NA VARIÁVEL GLOBAL CENTRALIZADA
+       if (globalThis._estadoGlobalDoJogo) {
+         // Curar 25% significa remover 5 tiros do registro global
+         const tirosRecuperados = 5;
 
-        // Sincroniza e força a atualização visual da barra de vida (HUD) do jogo
-        if (typeof atualizarBarraVidaUI === "function") {
-          atualizarBarraVidaUI();
-        } else if (hud && typeof hud.updateHealth === "function") {
-          const vidaAtual =
-            (aviaoMesh.userData && aviaoMesh.userData.life) ||
-            aviaoMesh.life ||
-            100;
-          hud.updateHealth(vidaAtual);
-        }
+         // Reduz os tiros tomados salvando no estado global
+         globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao = Math.max(
+           0,
+           globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao -
+             tirosRecuperados,
+         );
 
-        console.log(
-          `[TESTE COLETA] HA coletado! Distância validada. Energia recuperada em +${quantidadeCura}%`,
-        );
-      });
-    }
+         // Sincroniza o objeto estatístico do jogo para o resto dos módulos ouvir
+         globalThis._gameStats.player =
+           globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao;
+
+         // Força a atualização visual reativa imediata no HUD
+         hud.updateLife(globalThis._gameStats.player);
+
+         if (typeof hud.updateSaldo === "function") {
+           hud.updateSaldo(
+             globalThis._gameStats.enemy,
+             globalThis._gameStats.player,
+           );
+         }
+       }
+
+       console.log(
+         `[SINCRO CURA] Vida alterada na raiz global! Menos ${quantidadeCura}% de danos acumulados.`,
+       );
+     });
+   }
 
     aviaoBB.setFromObject(aviaoMesh);
     gerenciarDisparoJogador(scaledDelta);

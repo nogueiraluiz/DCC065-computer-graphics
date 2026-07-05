@@ -3,6 +3,10 @@
  */
 
 const VELOCIDADE_PADRAO = 0.8;
+globalThis._estadoGlobalDoJogo = {
+  tirosTomadosPeloAviao: 0,
+  inimigosAbatidosContador: 0,
+};
 
 export const CONFIG = {
   // === CONFIGURAÇÕES DOS INIMIGOS ===
