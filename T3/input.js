@@ -51,16 +51,21 @@ export function inputUpdate(aviaoMesh, targetMesh, camera, delta) {
   );
   targetMesh.position.z = planoZMira;
 
-  // Movimento amortecido do avião perseguindo a retícula
+  // Movimento amortecido do avião perseguindo a retícula.
+  // Fator exponencial (1 - e^-kt) em vez de `delta * k` puro: o segundo satura
+  // acima de 1 quando o delta é grande (aba em 2º plano, hitch, gameSpeed 3x),
+  // fazendo o lerp ultrapassar o alvo e "quicar" a cada frame. O exponencial
+  // nunca passa de 1, então o avião no máximo salta direto pro alvo, sem overshoot.
+  const posLerpT = 1 - Math.exp(-delta * CONFIG.input.smoothFactorXY);
   aviaoMesh.position.x = THREE.MathUtils.lerp(
     aviaoMesh.position.x,
     targetMesh.position.x,
-    delta * CONFIG.input.smoothFactorXY,
+    posLerpT,
   );
   aviaoMesh.position.y = THREE.MathUtils.lerp(
     aviaoMesh.position.y,
     targetMesh.position.y,
-    delta * CONFIG.input.smoothFactorXY,
+    posLerpT,
   );
 
   const dx = targetMesh.position.x - aviaoMesh.position.x;
@@ -79,19 +84,20 @@ export function inputUpdate(aviaoMesh, targetMesh, camera, delta) {
     MAX_PITCH,
   );
 
+  const rotLerpT = 1 - Math.exp(-delta * 8);
   aviaoMesh.rotation.z = THREE.MathUtils.lerp(
     aviaoMesh.rotation.z,
     targetRotationZ,
-    delta * 8,
+    rotLerpT,
   );
   aviaoMesh.rotation.x = THREE.MathUtils.lerp(
     aviaoMesh.rotation.x,
     targetRotationX,
-    delta * 8,
+    rotLerpT,
   );
   aviaoMesh.rotation.y = THREE.MathUtils.lerp(
     aviaoMesh.rotation.y,
     targetRotationZ * 0.15,
-    delta * 8,
+    rotLerpT,
   );
 }

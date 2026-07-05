@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { OBJLoader } from "../../build/jsm/loaders/OBJLoader.js";
-import { MTLLoader } from "../../build/jsm/loaders/MTLLoader.js";
+import { OBJLoader } from "../build/jsm/loaders/OBJLoader.js";
+import { MTLLoader } from "../build/jsm/loaders/MTLLoader.js";
 
 // Lista de cores pastéis/arcade metálicas que existiam antes
 const CORES_OVNI = [

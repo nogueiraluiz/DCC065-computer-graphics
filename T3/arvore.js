@@ -7,14 +7,63 @@
  */
 
 import * as THREE from 'three';
+import { MeshToonNodeMaterial } from 'three/webgpu';
+import { clamp, color, mx_noise_float, positionLocal, sin, time, vec2, vec3 } from 'three/tsl';
 
 /** Cores possíveis para as folhas das árvores. */
 const COR_FOLHA = ["#738417", "#2e6f40", "#388347", "#BF5B05", "#92780A"];
 
-// Material de madeira compartilhado entre todas as instâncias (criado uma única vez)
-const madeira = new THREE.MeshToonMaterial({color: "brown"});
 /** Escalas possíveis — sorteadas aleatoriamente a cada criação. */
 const ESCALAS_POSSIVEIS = [0.75, 1, 1.5, 1.75];
+
+// ---------------------------------------------------------------------------
+// Shader TSL: balanço de vento (tronco e folhas) + variação procedural de cor
+// ---------------------------------------------------------------------------
+
+const WIND_STRENGTH = 0.18;
+const WIND_SPEED = 1.6;
+
+/**
+ * Desloca o vértice lateralmente como se o vento balançasse a árvore: quanto
+ * mais perto do topo de cada peça (tronco, galho ou camada de folha), maior o
+ * balanço — a base fica presa, a ponta oscila. `phaseOffset` dessincroniza o
+ * balanço entre árvores diferentes para não parecerem todas soprando em uníssono.
+ *
+ * As geometrias das árvores (tronco, galhos, camadas de folha) são todas
+ * relativamente pequenas e centradas na própria origem local (aprox. -3..+3
+ * em Y), então usar `positionLocal.y` direto — sem depender da altura entre
+ * peças da árvore — já dá um balanço convincente em cada peça.
+ */
+function createWindSwayNode(phaseOffset) {
+  const windPhase = time.mul(WIND_SPEED).add(phaseOffset);
+  const swayFactor = clamp(positionLocal.y.add(3).div(6), 0.0, 1.0);
+  const swayX = sin(windPhase).mul(WIND_STRENGTH).mul(swayFactor);
+  const swayZ = sin(windPhase.mul(0.7).add(1.3)).mul(WIND_STRENGTH * 0.6).mul(swayFactor);
+  return positionLocal.add(vec3(swayX, 0.0, swayZ));
+}
+
+// Material de madeira compartilhado entre todas as instâncias (criado uma única vez).
+const madeira = new MeshToonNodeMaterial({ color: "brown" });
+madeira.positionNode = createWindSwayNode(0);
+
+/**
+ * Cria o material de folhagem de uma árvore: cor base sorteada da paleta
+ * (como antes) + variação procedural por ruído para quebrar a cor chapada,
+ * e o mesmo balanço de vento do tronco, com fase própria por árvore.
+ *
+ * @param {string} hexColor
+ * @returns {THREE.Material}
+ */
+function createFoliageMaterial(hexColor) {
+  const material = new MeshToonNodeMaterial();
+  material.positionNode = createWindSwayNode(Math.random() * Math.PI * 2);
+
+  const baseColor = color(hexColor);
+  const variation = mx_noise_float(vec2(positionLocal.x, positionLocal.z).mul(0.6), 1, 0).mul(0.08);
+  material.colorNode = clamp(baseColor.add(variation), 0.0, 1.0);
+
+  return material;
+}
 
 // ---------------------------------------------------------------------------
 // Geometrias pré-criadas e compartilhadas entre todas as instâncias.
@@ -51,7 +100,7 @@ const geomFolha7  = new THREE.SphereGeometry(1.5);             // copa secundár
  */
 export function criaArvore(tipo) {
   const corAleatorio   = COR_FOLHA[Math.floor(Math.random() * COR_FOLHA.length)];
-  const folha          = new THREE.MeshToonMaterial({color: corAleatorio});
+  const folha          = createFoliageMaterial(corAleatorio);
   const escalaSorteada = ESCALAS_POSSIVEIS[Math.floor(Math.random() * ESCALAS_POSSIVEIS.length)];
 
   let object;

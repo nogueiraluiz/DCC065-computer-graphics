@@ -154,6 +154,12 @@ export class LaserPool {
     this.activeLasers.splice(index, 1);
   }
 
+  clearAll() {
+    for (let i = this.activeLasers.length - 1; i >= 0; i--) {
+      this.despawn(this.activeLasers[i], i);
+    }
+  }
+
   /**
    * Retorna os lasers ativos para o CollisionManager
    */

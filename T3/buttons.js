@@ -1,6 +1,6 @@
 // buttons.js
 import { CONFIG } from "./config.js";
-import GUI from "../../libs/util/dat.gui.module.js";
+import GUI from "../libs/util/dat.gui.module.js";
 import { updateLightVolume } from "./light.js";
 
 // A fonte fofa e arredondada oficial do seu jogo
@@ -144,65 +144,7 @@ export function initUI(scene, light) {
       altitudeParams.altitude = Math.round(y);
     },
 
-    showGameOver() {
-      if (document.getElementById("game-arcade-over")) return;
-
-      const avisoMorteAntigo = document.getElementById("ui-container-morte");
-      if (avisoMorteAntigo) {
-        avisoMorteAntigo.remove();
-      }
-
-      const gameOverOverlay = document.createElement("div");
-      gameOverOverlay.id = "game-arcade-over";
-      gameOverOverlay.style.cssText = `
-        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-        background-color: rgba(61, 64, 91, 0.5); z-index: 3000; font-family: ${FONTE_PADRAO};
-      `;
-
-      const panel = document.createElement("div");
-      panel.style.cssText = `
-        display: flex; flex-direction: column; align-items: center; gap: 20px;
-        min-width: 300px; padding: 36px; border-radius: 20px; background-color: #fbf8f3;
-        border: 4px solid #3d405b; box-shadow: 8px 8px 0px #3d405b; text-align: center;
-        font-family: ${FONTE_PADRAO};
-      `;
-
-      // Título em Rosa Hello Kitty (#e06187) igual ao "PAUSADO"
-      const title = document.createElement("div");
-      title.innerHTML = `
-        <span style="color: #e06187; font-size: 36px; font-weight: 900; letter-spacing: 2px; font-family: ${FONTE_PADRAO}; text-transform: uppercase;">GAME OVER</span>
-        <div style="font-size: 14px; font-weight: 800; color: #7d809b; margin-top: 8px; text-transform: uppercase; font-family: ${FONTE_PADRAO};">O avião foi destruído!</div>
-      `;
-
-      // Único Botão: Tentar Novamente em Amarelo Arcade (#f2d925) com texto escuro
-      const btnRestart = document.createElement("button");
-      btnRestart.textContent = "TENTAR NOVAMENTE";
-      btnRestart.style.cssText = `
-        width: 100%; padding: 14px 28px; font-size: 14px; font-weight: 900; color: #3d405b;
-        background-color: #f2d925; border: 3px solid #3d405b; border-radius: 12px;
-        cursor: pointer; box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out;
-        font-family: ${FONTE_PADRAO}; letter-spacing: 0.5px;
-      `;
-      btnRestart.addEventListener("click", () => globalThis.location.reload());
-
-      // Efeito de clique físico tridimensional no botão
-      btnRestart.addEventListener("mousedown", () => {
-        btnRestart.style.transform = "translate(2px, 2px)";
-        btnRestart.style.boxShadow = "2px 2px 0px #3d405b";
-      });
-      btnRestart.addEventListener("mouseup", () => {
-        btnRestart.style.transform = "none";
-        btnRestart.style.boxShadow = "4px 4px 0px #3d405b";
-      });
-
-      panel.appendChild(title);
-      panel.appendChild(btnRestart);
-      gameOverOverlay.appendChild(panel);
-      document.body.appendChild(gameOverOverlay);
-    },
-
-    // === MODIFICADO: AVISO COM BOTÃO INFERIOR ACOPLADO E Z-INDEX SEGURO ===
-    showMorteAviso() {
+    showMorteAviso(onRestart) {
       if (document.getElementById("ui-container-morte")) return;
 
       const mainContainer = document.createElement("div");
@@ -252,8 +194,15 @@ export function initUI(scene, light) {
         box-shadow: 4px 4px 0px #1a1a1a;
         font-family: ${FONTE_PADRAO};
         transition: transform 0.05s;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
       `;
-      quickBtn.addEventListener("click", () => globalThis.location.reload());
+      function doRestart() {
+        if (onRestart) { mainContainer.remove(); onRestart(); }
+        else { globalThis.location.reload(); }
+      }
+      quickBtn.addEventListener("click", doRestart);
+      quickBtn.addEventListener("touchend", (e) => { e.preventDefault(); doRestart(); });
       quickBtn.addEventListener("mousedown", () => {
         quickBtn.style.transform = "translate(2px, 2px)";
         quickBtn.style.boxShadow = "2px 2px 0px #1a1a1a";
@@ -550,6 +499,16 @@ export function initPauseMenu({
     toggleDisplay: (value) => {
       if (startOverlay.style.display !== "none") return;
       pauseOverlay.style.display = value ? "flex" : "none";
+    },
+    showStartScreen: () => {
+      pauseOverlay.style.display = "none";
+      startOverlay.style.display = "flex";
+    },
+    syncSpeedButtons: () => updateSpeedButtons(),
+    // Inicia o jogo diretamente, sem exibir a tela inicial (usada pelo botão da loading screen)
+    start: () => {
+      startOverlay.style.display = "none";
+      setPaused(false);
     },
   };
 }

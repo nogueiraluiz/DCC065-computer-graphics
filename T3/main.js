@@ -3,7 +3,7 @@
  */
 
 import * as THREE from "three";
-import Stats from "../../build/jsm/libs/stats.module.js";
+import Stats from "../build/jsm/libs/stats.module.js";
 import { criaAviao } from "./aviao.js";
 import { onWindowResize } from "../libs/util/util.js";
 import { createWorldTiles, updateTiles } from "./tiles.js";
@@ -17,13 +17,14 @@ import { criaTarget } from "./target.js";
 import { CONFIG } from "./config.js";
 import { initSceneLighting, updateLightVolume } from "./light.js";
 import { startRenderer } from "./renderer.js";
+import { initMobileControls } from "./mobile.js";
 import { GerenciadorItens } from "./GerenciadorItens.js";
 
 // Cor do céu — usada tanto no fundo do renderer quanto na névoa para fundir o horizonte
 const BASE_COLOR = "rgb(148, 181, 224)";
 let scene = new THREE.Scene();
 scene.fog = new THREE.Fog(BASE_COLOR, 1, 1200);
-let renderer = startRenderer(BASE_COLOR);
+let renderer = await startRenderer(BASE_COLOR);
 
 // Painel de FPS no canto da tela
 const stats = new Stats();
@@ -61,6 +62,7 @@ const POPULACAO_TOTAL = 5;
 const criadorInimigos = new CriadorInimigos(scene);
 
 for (let i = 0; i < POPULACAO_TOTAL; i++) {
+  _setLoadingProgress(10 + (i / POPULACAO_TOTAL) * 80, `Carregando inimigos... ${i + 1}/${POPULACAO_TOTAL}`);
   const ladoDoCanto = i % 2 === 0 ? -80 : 80;
   const posicaoZFixaDesteInimigo = CONFIG.inimigos.posicaoZCombate;
 
@@ -161,6 +163,8 @@ globalThis.addEventListener("blur", () => {
   estaAtirando = false;
 });
 
+// Mobile: disparo controlado pelo movimento do joystick via globalThis._mobileFiring (ver mobile.js)
+
 const jogadorCollisionManager = new CollisionManager(
   "player",
   (target, status) => {
@@ -174,7 +178,7 @@ const jogadorCollisionManager = new CollisionManager(
       globalThis._shootEnabled = false;
 
       // Cria o aviso "Ai, eu morri" na tela
-      hud.showMorteAviso();
+      hud.showMorteAviso(resetGame);
     }
   },
   hud,
@@ -199,13 +203,14 @@ const clock = new THREE.Clock();
 let isPaused = false;
 let gameSpeed = CONFIG.modos.velocidadeJogoPadrao;
 
+let pauseMenu = null;
 if (!CONFIG.DISABLE_START_MENU) {
-  const pauseMenu = initPauseMenu({
+  pauseMenu = initPauseMenu({
     renderer: renderer,
     getIsPaused: () => isPaused,
     setPaused: (value) => {
       isPaused = value;
-      pauseMenu.toggleDisplay(value);
+      if (pauseMenu) pauseMenu.toggleDisplay(value);
       if (!value) {
         clock.getDelta();
       }
@@ -217,14 +222,38 @@ if (!CONFIG.DISABLE_START_MENU) {
   });
 }
 
+initMobileControls();
+_setLoadingProgress(100, 'Pronto!');
+// Exibe o botão JOGAR na tela de carregamento; ela só some quando o jogador clicar
+const _loadingStartBtn = document.getElementById('loading-start-btn');
+if (_loadingStartBtn) {
+  _loadingStartBtn.style.display = 'block';
+  _loadingStartBtn.addEventListener('click', () => {
+    _hideLoadingScreen();
+    // Inicia o jogo diretamente (pula a tela inicial do menu de pausa)
+    if (pauseMenu) pauseMenu.start();
+    else { isPaused = false; clock.getDelta(); }
+  });
+  // Efeito de clique físico no botão
+  _loadingStartBtn.addEventListener('mousedown', () => {
+    _loadingStartBtn.style.transform = 'translate(2px, 2px)';
+    _loadingStartBtn.style.boxShadow = '2px 2px 0px #3d405b';
+  });
+  _loadingStartBtn.addEventListener('mouseup', () => {
+    _loadingStartBtn.style.transform = 'none';
+    _loadingStartBtn.style.boxShadow = '4px 4px 0px #3d405b';
+  });
+}
+
 const _direcaoTiroJogador = new THREE.Vector3();
 
 function gerenciarDisparoJogador(scaledDelta) {
   tempoUltimoTiro += scaledDelta;
   if (globalThis._shootEnabled === false) return;
 
+  const disparando = estaAtirando || globalThis._mobileFiring === true;
   if (
-    estaAtirando &&
+    disparando &&
     tempoUltimoTiro >= CADENCIA_TIRO &&
     targetMesh &&
     aviaoMesh
@@ -291,11 +320,92 @@ function processarReciclagemInimigos() {
   });
 }
 
+function _setLoadingProgress(pct, txt) {
+  const bar = document.getElementById('loading-bar');
+  const label = document.getElementById('loading-text');
+  if (bar) bar.style.width = `${pct}%`;
+  if (label) label.textContent = txt;
+}
+
+function _hideLoadingScreen() {
+  const el = document.getElementById('loading-screen');
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(() => el.remove(), 500);
+}
+
+function resetGame() {
+  document.getElementById("ui-container-morte")?.remove();
+
+  aviaoMesh.caindo = false;
+  aviaoMesh.position.set(0, CONFIG.input.planeBaseY, 0);
+  aviaoMesh.rotation.set(0, 0, 0);
+  aviaoMesh.velocidadeQuedaY = undefined;
+  aviaoMesh.velocidadeGiro = undefined;
+
+  globalThis._shootEnabled = true;
+  estaAtirando = false;
+  globalThis._mobileFiring = false;
+  tempoUltimoTiro = 0;
+
+  listaInimigos.forEach((inimigo) => {
+    inimigo.caindo = false;
+    inimigo.ativo = false;
+    inimigo.life = 100;
+    inimigo.destruido = false;
+    inimigo.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
+    inimigo.velocidadeQuedaY = 0;
+    inimigo.velocidadeGiro = 0;
+    if (inimigo.mesh) {
+      inimigo.mesh.life = 100;
+      inimigo.mesh.visible = false;
+      inimigo.mesh.rotation.set(0, 0, 0);
+    }
+    inimigo.offsetZAtual = CONFIG.inimigos.posicaoZCombate;
+    inimigo.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
+  });
+
+  if (listaInimigos[0]) {
+    listaInimigos[0].ativo = true;
+    listaInimigos[0].mesh.visible = true;
+    listaInimigos[0].mesh.position.set(-80, CONFIG.input.planeBaseY, CONFIG.inimigos.posicaoZCombate);
+  }
+  if (listaInimigos[1]) {
+    listaInimigos[1].ativo = true;
+    listaInimigos[1].mesh.visible = true;
+    listaInimigos[1].mesh.position.set(80, CONFIG.input.planeBaseY, CONFIG.inimigos.posicaoZCombate);
+  }
+
+  laserPool.clearAll();
+  laserPoolInimigos.clearAll();
+
+  inimigosAbatidos = 0;
+  inimigoCollisionManager.reset();
+  jogadorCollisionManager.reset();
+
+  hud.updateScore(0);
+  hud.updateLife(0);
+  hud.updateSaldo(0, 0);
+
+  gameSpeed = CONFIG.modos.velocidadeJogoPadrao;
+  if (pauseMenu) pauseMenu.syncSpeedButtons();
+
+  if (pauseMenu) pauseMenu.showStartScreen();
+  isPaused = true;
+  clock.getDelta();
+}
+
+// Teto de delta por frame: evita que um hitch (aba em segundo plano, GC, troca
+// de aba por muito tempo) jogue um delta gigante direto na física do avião,
+// câmera e lerps — o que causava "espasmos"/piruetas ao voltar para a página,
+// piorado em gameSpeed 2x/3x (scaledDelta = delta * gameSpeed amplifica ainda mais).
+const MAX_DELTA = 1 / 15;
+
 // Inicia o loop do jogo
 render();
 
 function render() {
-  const delta = clock.getDelta();
+  const delta = Math.min(clock.getDelta(), MAX_DELTA);
 
   if (!isPaused) {
     const scaledDelta = delta * gameSpeed;
@@ -317,8 +427,7 @@ function render() {
       // Quando sumir totalmente da viewport de câmera (Y <= -250), congela e abre o Game Over
       if (aviaoMesh.position.y <= -10) {
         isPaused = true;
-        hud.showGameOver();
-      }
+        }
     } else {
       // CORREÇÃO MESTRA: O input só lê se NÃO estiver caindo (Removido o duplo comando abaixo)
       inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);
