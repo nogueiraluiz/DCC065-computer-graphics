@@ -17,8 +17,11 @@ import { criaTarget } from "./target.js";
 import { CONFIG } from "./config.js";
 import { initSceneLighting, updateLightVolume } from "./light.js";
 import { startRenderer } from "./renderer.js";
+<<<<<<< HEAD
 import { initMobileControls } from "./mobile.js";
 import { GerenciadorItens } from "./GerenciadorItens.js";
+=======
+>>>>>>> parent of 5d6277e (healyh pack funcionando)
 
 // Cor do céu — usada tanto no fundo do renderer quanto na névoa para fundir o horizonte
 const BASE_COLOR = "rgb(148, 181, 224)";
@@ -90,7 +93,6 @@ for (let i = 0; i < POPULACAO_TOTAL; i++) {
 
 // Vida dos Inimigos e do Jogador
 let inimigosAbatidos = 0;
-let contadorAbatesParaDrop = 0; // ADICIONE ESTA LINHA AQUI PARA CRIAR A VARIÁVEL
 let aviaoBB = new THREE.Box3();
 
 // Sistema de tiros
@@ -168,8 +170,10 @@ globalThis.addEventListener("blur", () => {
 const jogadorCollisionManager = new CollisionManager(
   "player",
   (target, status) => {
+    const LIMITE_TIROS = 5;
+
     // Se atingiu o limite e o avião ainda não iniciou a queda
-    if (status.life >= CONFIG.armas.limiteTiros && !aviaoMesh.caindo) {
+    if (status.life >= LIMITE_TIROS && !aviaoMesh.caindo) {
       aviaoMesh.caindo = true;
       aviaoMesh.velocidadeQuedaY = 25; // Mesma velocidade de queda dos inimigos
       aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
@@ -183,10 +187,6 @@ const jogadorCollisionManager = new CollisionManager(
   },
   hud,
 );
-
-//Health pack 
-const gerenciadorItens = new GerenciadorItens(scene);
-gerenciadorItens.inicializarPool();
 
 window.addEventListener(
   "resize",
@@ -283,10 +283,7 @@ function processarReciclagemInimigos() {
       inimigoTarget.caindo = true;
       inimigoTarget.velocidadeQuedaY = 25;
       inimigoTarget.velocidadeGiro = Math.random() * 8 + 6;
-      // Avisa o gerenciador que um abate aconteceu, passando o aviaoMesh como referência de posição
-      if (gerenciadorItens) {
-        gerenciadorItens.registrarAbate(aviaoMesh);
-      }
+      if (meshInterna.userData) meshInterna.userData.destruido = false;
       return;
     }
 
@@ -307,16 +304,6 @@ function processarReciclagemInimigos() {
       inimigoTarget.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
     }
-
-   if (foiAbatido && !inimigoTarget.caindo) {
-     inimigoTarget.caindo = true;
-     inimigoTarget.velocidadeQuedaY = 50;
-     inimigoTarget.velocidadeGiro = Math.random() * 8 + 6;
-
-     if (meshInterna.userData) meshInterna.userData.destruido = false;
-
-     return;
-   }
   });
 }
 
@@ -435,7 +422,6 @@ function render() {
 
     updateTiles(scaledDelta);
     updateCamera(camera, aviaoMesh, scaledDelta);
-    gerenciadorItens.atualizar(scaledDelta, aviaoMesh);
 
     if (aviaoMesh && !aviaoMesh.caindo) {
       tempoInimigo += scaledDelta;
@@ -445,34 +431,6 @@ function render() {
         camera,
         listaInimigos,
       );
-    }
-
-    if (gerenciadorItens) {
-      gerenciadorItens.atualizar(scaledDelta, aviaoMesh, (quantidadeCura) => {
-        if (aviaoMesh.userData && aviaoMesh.userData.life !== undefined) {
-          aviaoMesh.userData.life = Math.min(
-            100,
-            aviaoMesh.userData.life + quantidadeCura,
-          );
-        } else if (aviaoMesh.life !== undefined) {
-          aviaoMesh.life = Math.min(100, aviaoMesh.life + quantidadeCura);
-        }
-
-        // Sincroniza e força a atualização visual da barra de vida (HUD) do jogo
-        if (typeof atualizarBarraVidaUI === "function") {
-          atualizarBarraVidaUI();
-        } else if (hud && typeof hud.updateHealth === "function") {
-          const vidaAtual =
-            (aviaoMesh.userData && aviaoMesh.userData.life) ||
-            aviaoMesh.life ||
-            100;
-          hud.updateHealth(vidaAtual);
-        }
-
-        console.log(
-          `[TESTE COLETA] HA coletado! Distância validada. Energia recuperada em +${quantidadeCura}%`,
-        );
-      });
     }
 
     aviaoBB.setFromObject(aviaoMesh);
