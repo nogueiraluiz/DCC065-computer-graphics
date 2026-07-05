@@ -19,6 +19,24 @@
  */
 
 import * as THREE from "three";
+import { MeshStandardNodeMaterial } from "three/webgpu";
+import {
+  Fn,
+  float,
+  vec2,
+  vec3,
+  mix,
+  smoothstep,
+  step,
+  max as tslMax,
+  normalize,
+  time,
+  positionGeometry,
+  normalLocal,
+  normalWorld,
+  transformNormalToView,
+  mx_fractal_noise_float,
+} from "three/tsl";
 import { criaArvore } from "./arvore.js";
 
 // Estrutura simples para representar gradientes 3D usados no Perlin.
@@ -76,40 +94,16 @@ function fbm(ni, nj, options) {
   }
 
 
-  // Normaliza o resultado para o intervalo esperado e converte para altura real.
+  // Normaliza o resultado para o intervalo esperado.
   const normalized = Math.max(-1, Math.min(1, value / maxAmp));
-  return options.minHeight + ((normalized + 1) * 0.5) * (options.maxHeight - options.minHeight);
+
+  // Redistribuição leve: empurra picos e vales para os extremos, exagerando
+  // moderadamente montanhas e lagos sem descaracterizar o relevo original.
+  const EXAGGERATION_EXPONENT = 0.8;
+  const exaggerated = Math.sign(normalized) * Math.pow(Math.abs(normalized), EXAGGERATION_EXPONENT);
+
+  return options.minHeight + ((exaggerated + 1) * 0.5) * (options.maxHeight - options.minHeight);
 }
-
-/**
- * Retorna a cor do plane a partir da altura normalizada.
- *
- * @param {number} t
- * @returns {[number, number, number]}
- */
-function samplePlaneColor(t) {
-  // Altitudes muito altas viram neve.
-  if (t > 0.8) {
-    return [1, 1, 1];
-  }
-
-  // Altitudes intermediárias altas viram rocha.
-  if (t > 0.7) {
-    return [0.4, 0.4, 0.4];
-  }
-
-  // Altitudes intermediárias viram terra exposta.
-  if (t > 0.55) {
-    return [0.45, 0.32, 0.18];
-  }
-
-  if (t > 0.3) {
-    return [0.1, 0.4, 0.15];
-  }
-
-  return [0.05, 0.2, 0.1]; // Altitudes baixas viram vegetação densa.
-}
-// Regiões baixas permanecem verdes.
 
 const Terrain = createTerrain(THREE);
 
@@ -305,7 +299,19 @@ const TILE_SCROLL_SPEED = 50;
 
 /** Amplitude máxima das montanhas em relação ao plano base. */
 const MAX_HEIGHT = 80;
-const MIN_HEIGHT = -20;
+const MIN_HEIGHT = -50;
+
+/**
+ * Frequência base do ruído fbm: quanto menor, maiores (e mais espaçadas)
+ * ficam as feições do relevo — usada para afastar as montanhas umas das outras.
+ */
+const MOUNTAIN_FREQUENCY = 1.2;
+
+/** Altura absoluta abaixo da qual o relevo vira lago/água no shader do terreno. */
+const WATER_LEVEL = -25;
+
+/** Largura da faixa de transição (praia/costa) entre terra e água. */
+const SHORE_BAND = 5;
 
 // ---------------------------------------------------------------------------
 // Configuração das árvores
@@ -321,24 +327,172 @@ const TREE_GRID_ROWS = 40;
 /** Distância mínima entre duas árvores (unidades de mundo, espaço local do tile). */
 const TREE_MIN_DIST = 30;
 
-/** Faixa de altitude em que árvores podem nascer. Fora dela é rocha ou vale seco. */
-const TREE_MAX_HEIGHT = 40;
-const TREE_MIN_HEIGHT = -20;
+/** Faixa de altitude em que árvores podem nascer. Fora dela é água, rocha ou neve. */
+const TREE_MAX_HEIGHT = 50;
+const TREE_MIN_HEIGHT = WATER_LEVEL + 8;
 
 /** Inclinação máxima do terreno para permitir o nascimento de árvores. */
-const TREE_MAX_SLOPE_DEG = 20;
+const TREE_MAX_SLOPE_DEG = 45;
 
 /** Compensação vertical para evitar que a base da árvore fique soterrada. */
 const TREE_BASE_OFFSET = 2;
 
 // ---------------------------------------------------------------------------
-// Material compartilhado entre os dois tiles
+// Faixas de altura/inclinação de cada tipo de terreno (shader do terreno)
 // ---------------------------------------------------------------------------
 
-const terrainMaterial = new THREE.MeshLambertMaterial({
-  color: "rgb(255, 255, 255)",
-  vertexColors: true,
-});
+/** Vegetação: gradiente do verde escuro (vales) ao verde claro (encostas). */
+const GRASS_LOW_HEIGHT = -4;
+const GRASS_HIGH_HEIGHT = 45;
+
+/** Praia: faixa de areia visível entre a linha d'água e a vegetação. */
+const SAND_START_HEIGHT = WATER_LEVEL;
+const SAND_FULL_HEIGHT = WATER_LEVEL + 3;
+const SAND_FADE_HEIGHT = WATER_LEVEL + 6;
+const SAND_END_HEIGHT = WATER_LEVEL + 16;
+
+/** Rocha: por altitude (picos) e por inclinação (encostas íngremes, em qualquer altura). */
+const ROCK_START_HEIGHT = 24;
+const ROCK_END_HEIGHT = 48;
+const ROCK_SLOPE_START = 0.45; // normalWorld.y — abaixo disso já conta como rocha
+const ROCK_SLOPE_END = 0.85;
+
+/** Neve: banda perto do topo, reduzida em paredões muito íngremes (fica rocha exposta). */
+const SNOW_START_HEIGHT = 52;
+const SNOW_END_HEIGHT = 60;
+const SNOW_SLOPE_START = 0.3;
+const SNOW_SLOPE_END = 0.7;
+
+// ---------------------------------------------------------------------------
+// Material compartilhado entre os dois tiles — texturização e água via TSL
+// ---------------------------------------------------------------------------
+
+/**
+ * Constrói o material procedural do terreno em TSL (Three Shading Language).
+ *
+ * Combina múltiplos "materiais" sólidos (vegetação, areia, rocha, neve) com
+ * blending baseado em altura e inclinação do relevo, e funde diretamente no
+ * mesmo shader um efeito de água animada nas regiões mais baixas do terreno.
+ *
+ * Espaço usado nos cálculos:
+ *   `positionGeometry` é o atributo de posição bruto do vértice, imune a
+ *   qualquer substituição feita via `material.positionNode` — por isso é a
+ *   referência de altura/plano usada tanto para o blend de cores quanto para
+ *   a máscara de água, mesmo depois que a posição visual é achatada abaixo
+ *   do nível da água.
+ *
+ * Movimento junto ao terreno:
+ *   Como o jogo rola o terreno (e não a câmera), todo o ruído de detalhe e
+ *   das ondas usa coordenadas locais do vértice (`positionGeometry.xy`) em
+ *   vez de posição de mundo — assim o padrão fica "colado" na malha e rola
+ *   junto com ela; `time` soma apenas o fluxo de animação da água por cima.
+ */
+function createTerrainMaterial() {
+  const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
+
+  const height = positionGeometry.z;
+  const localXY = positionGeometry.xy;
+
+  // --- Máscara de água: 0 em terra firme, 1 nas regiões abaixo do nível da água ---
+  const waterMask = smoothstep(
+    float(WATER_LEVEL - SHORE_BAND),
+    float(WATER_LEVEL + SHORE_BAND),
+    height,
+  ).oneMinus();
+
+  // --- Achata a geometia visível abaixo do nível da água e anima ondulação suave ---
+  // Ruído único e barato (2 octaves), calculado por vértice — nunca por pixel.
+  const waveCoord = localXY.mul(0.05).add(vec2(time.mul(0.15), time.mul(0.1)));
+  const ripple = mx_fractal_noise_float(waveCoord, 2, 2.0, 0.5, 1.0).mul(0.6);
+  const effectiveHeight = tslMax(height, float(WATER_LEVEL).add(ripple.mul(waterMask)));
+
+  material.positionNode = vec3(positionGeometry.x, positionGeometry.y, effectiveHeight);
+
+  // --- Achata também a normal usada na iluminação, para a água parecer lisa ---
+  const flatNormal = normalize(mix(normalLocal, vec3(0, 0, 1), waterMask));
+  material.normalNode = transformNormalToView(flatNormal);
+
+  // Calculada aqui fora (não só dentro do colorNode) porque também alimenta o
+  // brilho/rugosidade da neve logo abaixo — precisa ser reaproveitável.
+  const snowMask = smoothstep(float(SNOW_START_HEIGHT), float(SNOW_END_HEIGHT), height).mul(
+    smoothstep(SNOW_SLOPE_START, SNOW_SLOPE_END, normalWorld.y),
+  );
+
+  material.colorNode = Fn(() => {
+    // Uma única amostra de ruído por pixel (2 octaves), reaproveitada em todos os
+    // blends abaixo — várias chamadas de ruído fractal por fragmento derrubam o
+    // framerate rapidamente, então o mesmo valor alimenta terra, praia e espuma.
+    const detail = mx_fractal_noise_float(localXY.mul(0.06), 2, 2.0, 0.5, 1.0);
+
+    // Cores-base com bastante contraste entre si.
+    const grassLow = new THREE.Color("#1c4d1f"); // verde escuro
+    const grassHigh = new THREE.Color("#2a7f2a"); // verde claro
+    const sandColor = new THREE.Color("#f2d99b"); // amarelo vivo
+    const rockColor = new THREE.Color("#414144"); // cinza bem escuro
+    const snowColor = new THREE.Color("#ffffff"); // branco puro
+
+    // Ruído fino e alongado (como palhetas de grama) para quebrar o verde liso
+    // em tufos claros/escuros — sem depender de nenhuma textura de imagem.
+    const bladeCoord = localXY.mul(vec2(0.9, 0.3));
+    const bladeNoise = mx_fractal_noise_float(bladeCoord, 2, 2.0, 0.5, 1.0);
+    const bladeShade = smoothstep(-0.2, 0.2, bladeNoise).mul(0.3).add(0.85);
+
+    // Vegetação: gradiente do verde escuro (vales) ao verde claro (encostas),
+    // com os tufos de grama aplicados por cima.
+    let color = mix(
+      grassLow,
+      grassHigh,
+      smoothstep(float(GRASS_LOW_HEIGHT), float(GRASS_HIGH_HEIGHT), height),
+    ).mul(bladeShade);
+
+    // Praia: faixa estreita de areia logo acima da linha d'água.
+    const sandIn = smoothstep(float(SAND_START_HEIGHT), float(SAND_FULL_HEIGHT), height);
+    const sandOut = smoothstep(float(SAND_FADE_HEIGHT), float(SAND_END_HEIGHT), height).oneMinus();
+    color = mix(color, sandColor, sandIn.mul(sandOut));
+
+    // Rocha por altitude (picos) e por inclinação (encostas íngremes, em qualquer altura).
+    const rockByHeight = smoothstep(float(ROCK_START_HEIGHT), float(ROCK_END_HEIGHT), height);
+    const rockBySlope = smoothstep(ROCK_SLOPE_START, ROCK_SLOPE_END, normalWorld.y).oneMinus();
+    color = mix(color, rockColor, rockByHeight);
+    color = mix(color, rockColor, rockBySlope);
+
+    // Neve (snowMask calculada fora, na função pai — ver createTerrainMaterial).
+    color = mix(color, snowColor, snowMask);
+
+    // Quebra a uniformidade das cores, simulando textura procedural.
+    color = color.mul(detail.mul(0.08).add(0.96));
+
+    // --- Água em estilo cartoon/toon: cor rasa/funda em degrau duro (sem
+    // gradiente suave de PBR realista), mais pontinhos de brilho esparsos.
+    // Sem linhas de onda e sem espuma em faixa sólida (removidas a pedido).
+    const depth = float(WATER_LEVEL).sub(height).max(0.0);
+
+    const waterShallow = new THREE.Color("#3cb1aa"); // ciano vivo
+    const waterDeep = new THREE.Color("#0f5a6b"); // azul-petróleo escuro
+    // Degrau único: água rasa OU funda, sem meio-termo esmaecendo aos poucos.
+    let waterColor = mix(waterShallow, waterDeep, step(7.0, depth));
+
+    // Brilho: pontinhos de luz esparsos e duros (como reflexos desenhados à
+    // mão), reaproveitando `bladeNoise` (já calculado acima) sem custo extra.
+    const glintMask = step(0.65, bladeNoise);
+    waterColor = mix(waterColor, vec3(1.0), glintMask.mul(0.7));
+
+    return mix(color, waterColor, waterMask);
+  })();
+
+  // Neve um pouco mais lisa que o resto do chão, para pegar brilho especular
+  // da luz direcional — sozinho, albedo (1,1,1) sob luz difusa fraca ainda
+  // lê como cinza; um pouco de gloss + um leve emissivo garantem branco de verdade.
+  // Água também mantém o próprio gloss (mais lisa e um toque de metalness).
+  const groundRoughness = mix(float(0.95), float(0.45), snowMask);
+  material.roughnessNode = mix(groundRoughness, float(0.2), waterMask);
+  material.metalnessNode = mix(float(0.0), float(0.05), waterMask);
+  material.emissiveNode = vec3(1.0, 1.0, 1.0).mul(snowMask).mul(0.18);
+
+  return material;
+}
+
+const terrainMaterial = createTerrainMaterial();
 
 // ---------------------------------------------------------------------------
 // Semente do ruído — terreno igual a cada execução
@@ -505,11 +659,8 @@ function rebuildTerrain(tile, frontEdgeHeights) {
     ySegments: TILE_SEGMENTS,
     maxHeight: MAX_HEIGHT,
     minHeight: MIN_HEIGHT,
-    frequency: 2,
+    frequency: MOUNTAIN_FREQUENCY,
   });
-
-  // Aplica coloração por altura antes de plantar as árvores.
-  applyHeightColors(terrainGroup);
 
   // Planta árvores sobre a malha gerada.
   plantTrees(tile, terrainGroup.children[0].geometry, cols);
@@ -613,44 +764,6 @@ function rebuildTerrain(tile, frontEdgeHeights) {
     return heights;
   }
 
-
-  /**
-   * Aplica coloração discreta ao plane com base na altitude normalizada.
-   *
-   * Faixas:
-   *   - t > 0.90 -> branco
-   *   - 0.65 < t <= 0.90 -> marrom
-   *   - t <= 0.65 -> verde
-   *
-   * Onde t é a altura normalizada no intervalo [0, 1].
-   *
-   * @param {THREE.Group} terrainGroup
-   */
-  function applyHeightColors(terrainGroup) {
-    // Obtém a malha do terreno para criar um atributo de cor por vértice.
-    const mesh = terrainGroup.children[0];
-    if (!mesh) return;
-
-    // Lê a geometria para mapear a cor de cada vértice pela sua altitude.
-    const geometry = mesh.geometry;
-    const positions = geometry.attributes.position;
-    const count = positions.count;
-    const colors = new Float32Array(count * 3);
-
-    // Para cada vértice, calcula uma cor com base na altura normalizada.
-    for (let i = 0; i < count; i++) {
-      const height = positions.getZ(i);
-      const t = Math.min(1, Math.max(0, (height - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT)));
-      const [r, g, b] = samplePlaneColor(t);
-      colors[i * 3] = r;
-      colors[i * 3 + 1] = g;
-      colors[i * 3 + 2] = b;
-    }
-
-    // Anexa o atributo de cor para que o material use as cores por vértice.
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geometry.attributes.color.needsUpdate = true;
-  }
 
   /**
    * Planta árvores no tile respeitando altura, inclinação e distância mínima.
