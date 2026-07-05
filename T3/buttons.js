@@ -336,6 +336,11 @@ export function initPauseMenu({
   playButton.addEventListener("click", () => {
     startOverlay.style.display = "none";
     setPaused(false);
+    if (globalThis.audioGeral) {
+      globalThis._loadingAtivo = false; // Desliga a música de carregamento
+      globalThis.audioGeral.pararSom("musicaLoading");
+      globalThis.audioGeral.tocarMusicaLoop("musicaFundo", 0.2); // Inicia HelloKittyOnlineOST
+    }
   });
 
   startPanel.appendChild(startTitle);

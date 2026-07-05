@@ -18,6 +18,7 @@ import { CONFIG } from "./config.js";
 import { initSceneLighting, updateLightVolume } from "./light.js";
 import { startRenderer } from "./renderer.js";
 import { GerenciadorItens } from "./GerenciadorItens.js";
+import { GerenciadorAudio } from "./barulhos.js";
 
 // Cor do céu — usada tanto no fundo do renderer quanto na névoa para fundir o horizonte
 const BASE_COLOR = "rgb(148, 181, 224)";
@@ -41,6 +42,13 @@ camera.lookAt(0, 120, 0);
 scene.add(camera);
 
 let light = initSceneLighting(camera, scene);
+
+// Áudio Global Inicializado Seguramente com a Câmera Pronta
+globalThis.audioGeral = new GerenciadorAudio(camera);
+
+globalThis._loadingAtivo = true;
+await globalThis.audioGeral.carregarSons();
+globalThis.audioGeral.tocarMusicaLoop("musicaLoading", 0.3);
 
 initMouseTracking();
 
@@ -88,20 +96,18 @@ for (let i = 0; i < POPULACAO_TOTAL; i++) {
 
 // Vida dos Inimigos e do Jogador
 let inimigosAbatidos = 0;
-let contadorAbatesParaDrop = 0; // ADICIONE ESTA LINHA AQUI PARA CRIAR A VARIÁVEL
+let contadorAbatesParaDrop = 0;
 let aviaoBB = new THREE.Box3();
 
 // Sistema de tiros
 let laserPool = new LaserPool(scene, "player", "rgb(255, 25, 140)", 80);
 let laserPoolInimigos = new LaserPool(scene, "enemy", "rgb(21, 0, 255)", 40);
 
-// Passamos a scene e a light para o buttons.js instanciar e estilizar o dat.GUI sem duplicar
+// UI e HUD
 const hud = initUI(scene, light);
 const inimigoCollisionManager = new CollisionManager("enemy", null, hud);
 
-// Tiro dos inimigos
-const INTERVALO_TIRO_INIMIGO = CONFIG.inimigos.intervaloTiro;
-
+// PROBLEMA 2 RESOLVIDO (Parte A): Som do Tiro dos Inimigos sincronizado estritamente dentro do cronômetro real do disparo
 function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
   if (!aviaoMesh || !camera) return;
   if (globalThis._shootEnabled === false) return;
@@ -135,6 +141,12 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
       direcaoAlvo.subVectors(aviaoMesh.position, inimigoTarget.mesh.position);
 
       laserPoolInimigos.shoot(inimigoTarget.mesh.position, direcaoAlvo);
+
+      // Toca o som de tiro do alien de forma limpa e harmônica no momento do disparo físico
+      if (globalThis.audioGeral) {
+        globalThis.audioGeral.tocarEfeito("laser", 0.05); // Volume suave (5%)
+      }
+
       inimigoTarget.tempoRecarga = 0;
     }
   });
@@ -164,7 +176,9 @@ globalThis.addEventListener("blur", () => {
 const jogadorCollisionManager = new CollisionManager(
   "player",
   (target, status) => {
-    // Agora avalia os tiros lendo o estado global unificado de forma precisa
+    if (globalThis.audioGeral)
+      globalThis.audioGeral.tocarEfeito("tiroTomado", 0.08);
+
     if (
       globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao >=
         CONFIG.armas.limiteTiros &&
@@ -174,6 +188,14 @@ const jogadorCollisionManager = new CollisionManager(
       aviaoMesh.velocidadeQuedaY = 25;
       aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
 
+      // BLOQUEIO GLOBAL DE SOM: Ativa o sinalizador que desliga a música ambiente de forma atômica
+      globalThis._gameOverAtivo = true;
+
+      if (globalThis.audioGeral) {
+        globalThis.audioGeral.pararSom("musicaFundo"); // Corta na hora o HelloKittyOnlineOST
+        globalThis.audioGeral.tocarMusicaLoop("musicaMorte", 0.4); // Toca o triste EuMorri.mp3 em loop contínuo
+      }
+
       globalThis._shootEnabled = false;
       hud.showMorteAviso();
     }
@@ -181,7 +203,7 @@ const jogadorCollisionManager = new CollisionManager(
   hud,
 );
 
-//Health pack 
+// Health pack
 const gerenciadorItens = new GerenciadorItens(scene);
 gerenciadorItens.inicializarPool();
 
@@ -220,6 +242,7 @@ if (!CONFIG.DISABLE_START_MENU) {
 
 const _direcaoTiroJogador = new THREE.Vector3();
 
+// PROBLEMA 2 RESOLVIDO (Parte B): Som do tiro do jogador amarrado firmemente na saída do laser
 function gerenciarDisparoJogador(scaledDelta) {
   tempoUltimoTiro += scaledDelta;
   if (globalThis._shootEnabled === false) return;
@@ -234,6 +257,11 @@ function gerenciarDisparoJogador(scaledDelta) {
       .subVectors(targetMesh.position, aviaoMesh.position)
       .normalize();
     laserPool.shoot(aviaoMesh.position, _direcaoTiroJogador);
+
+    if (globalThis.audioGeral) {
+      globalThis.audioGeral.tocarEfeito("laser", 0.08); // Volume calibrado em 8%
+    }
+
     tempoUltimoTiro = 0;
   }
 }
@@ -255,7 +283,11 @@ function processarReciclagemInimigos() {
       inimigoTarget.caindo = true;
       inimigoTarget.velocidadeQuedaY = 25;
       inimigoTarget.velocidadeGiro = Math.random() * 8 + 6;
-      // Avisa o gerenciador que um abate aconteceu, passando o aviaoMesh como referência de posição
+      if (globalThis.audioGeral) {
+        globalThis.audioGeral.tocarEfeito("alienAtingido", 0.1);
+      }
+
+      // PROBLEMA 1 RESOLVIDO: Reintroduzido o gatilho vital que registra o abate e dropa o Health Pack a cada 3 baixas
       if (gerenciadorItens) {
         gerenciadorItens.registrarAbate(aviaoMesh);
       }
@@ -279,16 +311,6 @@ function processarReciclagemInimigos() {
       inimigoTarget.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
       inimigoTarget.tempoRecarga = CONFIG.inimigos.delayPrimeiroTiro;
     }
-
-   if (foiAbatido && !inimigoTarget.caindo) {
-     inimigoTarget.caindo = true;
-     inimigoTarget.velocidadeQuedaY = 50;
-     inimigoTarget.velocidadeGiro = Math.random() * 8 + 6;
-
-     if (meshInterna.userData) meshInterna.userData.destruido = false;
-
-     return;
-   }
   });
 }
 
@@ -301,7 +323,28 @@ function render() {
   if (!isPaused) {
     const scaledDelta = delta * gameSpeed;
 
-    // === LÓGICA DE QUEDA E PERDA DE CONTROLE BLINDADA ===
+    if (
+      globalThis._estadoGlobalDoJogo &&
+      globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao >=
+        CONFIG.armas.limiteTiros &&
+      !aviaoMesh.caindo
+    ) {
+      aviaoMesh.caindo = true;
+      aviaoMesh.velocidadeQuedaY = 25;
+      aviaoMesh.velocidadeGiro = Math.random() * 8 + 6;
+      globalThis._gameOverAtivo = true;
+      globalThis._shootEnabled = false;
+
+      if (globalThis.audioGeral) {
+        globalThis.audioGeral.pararSom("musicaFundo"); // Corta a música alegre na hora
+
+        // CORREÇÃO: Mudado de 0.4 para 1.0 para a música de morte tocar bem ALTA!
+        globalThis.audioGeral.tocarMusicaLoop("musicaMorte", 1.0);
+      }
+
+      hud.showMorteAviso();
+    }
+
     if (aviaoMesh.caindo) {
       aviaoMesh.position.x += (0 - aviaoMesh.position.x) * 0.1;
 
@@ -309,26 +352,20 @@ function render() {
         aviaoMesh.velocidadeQuedaY = 5;
       if (aviaoMesh.velocidadeGiro === undefined) aviaoMesh.velocidadeGiro = 6;
 
-      // Cai em Y cruzando o chão para sumir da tela
       aviaoMesh.position.y -= aviaoMesh.velocidadeQuedaY * scaledDelta;
-
-      // Gira apenas no eixo Z descontroladamente
       aviaoMesh.rotation.z += aviaoMesh.velocidadeGiro * scaledDelta;
 
-      // Quando sumir totalmente da viewport de câmera (Y <= -250), congela e abre o Game Over
       if (aviaoMesh.position.y <= -10) {
         isPaused = true;
         hud.showGameOver();
       }
     } else {
-      // CORREÇÃO MESTRA: O input só lê se NÃO estiver caindo (Removido o duplo comando abaixo)
       inputUpdate(aviaoMesh, targetMesh, camera, scaledDelta);
     }
 
     updateTiles(scaledDelta);
     updateCamera(camera, aviaoMesh, scaledDelta);
 
-    // 1. Move os inimigos se o jogador estiver vivo
     if (aviaoMesh && !aviaoMesh.caindo) {
       tempoInimigo += scaledDelta;
       criadorInimigos.atualizarMovimento(
@@ -339,42 +376,40 @@ function render() {
       );
     }
 
-    // 2. UNIFICADO: Processa a física e o ganho real de vida reativo!
-   if (gerenciadorItens) {
-     gerenciadorItens.atualizar(scaledDelta, aviaoMesh, (quantidadeCura) => {
-       // REPARO SEGURO BASEADO NA VARIÁVEL GLOBAL CENTRALIZADA
-       if (globalThis._estadoGlobalDoJogo) {
-         // Curar 25% significa remover 5 tiros do registro global
-         const tirosRecuperados = 5;
+    // Processamento da Cura do Item
+    if (gerenciadorItens) {
+      gerenciadorItens.atualizar(scaledDelta, aviaoMesh, (quantidadeCura) => {
+        if (globalThis._estadoGlobalDoJogo) {
+          const tirosRecuperados = 5;
 
-         // Reduz os tiros tomados salvando no estado global
-         globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao = Math.max(
-           0,
-           globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao -
-             tirosRecuperados,
-         );
+          globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao = Math.max(
+            0,
+            globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao -
+              tirosRecuperados,
+          );
 
-         // Sincroniza o objeto estatístico do jogo para o resto dos módulos ouvir
-         globalThis._gameStats.player =
-           globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao;
+          globalThis._gameStats.player =
+            globalThis._estadoGlobalDoJogo.tirosTomadosPeloAviao;
 
-         // Força a atualização visual reativa imediata no HUD
-         hud.updateLife(globalThis._gameStats.player);
+          hud.updateLife(globalThis._gameStats.player);
 
-         if (typeof hud.updateSaldo === "function") {
-           hud.updateSaldo(
-             globalThis._gameStats.enemy,
-             globalThis._gameStats.player,
-           );
-         }
-       }
+          if (typeof hud.updateSaldo === "function") {
+            hud.updateSaldo(
+              globalThis._gameStats.enemy,
+              globalThis._gameStats.player,
+            );
+          }
 
-       console.log(
-         `[SINCRO CURA] Vida alterada na raiz global! Menos ${quantidadeCura}% de danos acumulados.`,
-       );
-     });
-   }
-
+          // === ADICIONADO: Som mágico com volume ideal (Mais alto que tiros, mais baixo que a OST) ===
+          if (globalThis.audioGeral) {
+            globalThis.audioGeral.tocarEfeito("fairyDust", 0.16); // Volume calibrado e destacado
+          }
+        }
+        console.log(
+          `[SINCRO CURA] Vida alterada na raiz global! Menos ${quantidadeCura}% de danos acumulados.`,
+        );
+      });
+    }
     aviaoBB.setFromObject(aviaoMesh);
     gerenciarDisparoJogador(scaledDelta);
     gerenciarDisparoInimigos(scaledDelta, aviaoMesh);
@@ -412,6 +447,10 @@ function render() {
         [{ ativo: true, mesh: aviaoMesh, bb: aviaoBB }],
         laserPoolInimigos,
       );
+    }
+
+    if (globalThis.audioGeral) {
+      globalThis.audioGeral.sincronizarControles();
     }
   }
 
