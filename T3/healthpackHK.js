@@ -2,10 +2,12 @@
 import * as THREE from "three";
 import { STLLoader } from "../../build/jsm/loaders/STLLoader.js";
 
+const HEALTHPACK_URL = new URL("./assets/hello-kitty-healthpack.stl", import.meta.url).href;
+
 class HealthpackHK {
-  constructor(scene) {
+  constructor(scene, loadingManager) {
     this.scene = scene;
-    this.loader = new STLLoader();
+    this.loader = new STLLoader(loadingManager);
     this.mesh = null;
     this.velocidadeRotacao = 0.02;
   }
@@ -13,7 +15,7 @@ class HealthpackHK {
   carregarModel() {
     return new Promise((resolve, reject) => {
       this.loader.load(
-        "./assets/obj_1_hello kitty 1.stl",
+        HEALTHPACK_URL,
         (geometry) => {
           geometry.center(); // Centraliza o pivô (operação leve)
 

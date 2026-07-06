@@ -8,6 +8,7 @@ import { criaAviao } from "./aviao.js";
 import { onWindowResize } from "../libs/util/util.js";
 import { createWorldTiles, updateTiles } from "./tiles.js";
 import { initMouseTracking, inputUpdate } from "./input.js";
+import { initMobileControls } from "./mobile.js";
 import { updateCamera } from "./camera.js";
 import { CriadorInimigos } from "./criadorInimigos.js";
 import { initPauseMenu, initUI } from "./buttons.js";
@@ -40,11 +41,17 @@ scene.add(camera);
 
 let light = initSceneLighting(camera, scene);
 
+// LoadingManager compartilhado: rastreia o progresso REAL de todo asset
+// (áudio, modelos OBJ/MTL dos inimigos, STL do health pack) carregado através
+// dele, para a barra de carregamento refletir o andamento de verdade.
+const loadingManager = new THREE.LoadingManager();
+
 // Áudio Global acoplado seguramente à câmera
-globalThis.audioGeral = new GerenciadorAudio(camera);
+globalThis.audioGeral = new GerenciadorAudio(camera, loadingManager);
 globalThis._loadingAtivo = true;
 
 initMouseTracking();
+initMobileControls();
 
 const aviaoController = criaAviao(scene);
 let aviaoMesh = aviaoController.object;
@@ -56,8 +63,8 @@ targetMesh.position.set(0, CONFIG.input.planeBaseY, 140);
 let tempoInimigo = 0;
 let listaInimigos = [];
 
-const criadorInimigos = new CriadorInimigos(scene);
-const gerenciadorItens = new GerenciadorItens(scene);
+const criadorInimigos = new CriadorInimigos(scene, loadingManager);
+const gerenciadorItens = new GerenciadorItens(scene, loadingManager);
 
 let inimigosAbatidos = 0;
 let aviaoBB = new THREE.Box3();
@@ -68,72 +75,139 @@ let laserPoolInimigos = new LaserPool(scene, "enemy", "rgb(21, 0, 255)", 40);
 const hud = initUI(scene, light);
 const inimigoCollisionManager = new CollisionManager("enemy", null, hud);
 
-// ORQUESTRADOR SEQUENCIAL SEGURO ANTI-LAG
+let pauseMenu = null;
+
+const clock = new THREE.Clock();
+let isPaused = false;
+let gameSpeed = CONFIG.modos.velocidadeJogoPadrao;
+
+if (!CONFIG.DISABLE_START_MENU) {
+  pauseMenu = initPauseMenu({
+    renderer,
+    getIsPaused: () => isPaused,
+    setPaused: (value) => {
+      isPaused = value;
+      pauseMenu.toggleDisplay(value);
+      if (!value) clock.getDelta();
+    },
+    getGameSpeed: () => gameSpeed,
+    setGameSpeed: (value) => {
+      gameSpeed = value;
+    },
+  });
+}
+
+// =============================================================================
+// TELA DE CARREGAMENTO: progresso real via LoadingManager, exibido suavizado
+// =============================================================================
+// O LoadingManager conta cada requisição feita pelos loaders que o recebem
+// (AudioLoader, MTLLoader, OBJLoader, STLLoader — ver GerenciadorAudio,
+// CriadorInimigos e GerenciadorItens). onProgress reflete a fração real de
+// assets já carregados — nunca um valor inventado.
+//
+// Como os assets são pequenos/locais, o carregamento real pode terminar em
+// poucos milissegundos, tempo curto demais para a barra "andar" visualmente.
+// Por isso o valor mostrado na tela (`progressoExibido`) sobe em direção ao
+// valor real (`progressoAlvo`) numa velocidade limitada, em vez de saltar
+// direto pro valor final — a barra sempre mostra o progresso verdadeiro,
+// só que sem pular de 0% pra 100% num único frame.
+const fillBar = document.getElementById("real-loading-bar-fill");
+const percentText = document.getElementById("real-loading-bar-percent");
+
+let progressoAlvo = 0;
+let progressoExibido = 0;
+let renderIniciado = false;
+let transicaoLoadingAgendada = false;
+const VELOCIDADE_BARRA = 0.7; // fração por segundo (~1.4s para encher do zero ao máximo)
+
+loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+  progressoAlvo = Math.max(progressoAlvo, itemsLoaded / itemsTotal);
+};
+
+loadingManager.onError = (url) => {
+  console.warn(`[CARREGAMENTO] Falha ao buscar: ${url}`);
+};
+
+let ultimoTempoBarra = null;
+function animarBarraCarregamento(agora) {
+  if (ultimoTempoBarra === null) ultimoTempoBarra = agora;
+  const dt = (agora - ultimoTempoBarra) / 1000;
+  ultimoTempoBarra = agora;
+
+  if (progressoExibido < progressoAlvo) {
+    progressoExibido = Math.min(
+      progressoAlvo,
+      progressoExibido + VELOCIDADE_BARRA * dt,
+    );
+  }
+
+  const porcentagem = Math.round(progressoExibido * 100);
+  if (fillBar) fillBar.style.width = `${porcentagem}%`;
+  if (percentText) percentText.textContent = `${porcentagem}%`;
+
+  if (progressoExibido >= 1) {
+    concluirTelaDeCarregamento();
+    return;
+  }
+
+  requestAnimationFrame(animarBarraCarregamento);
+}
+requestAnimationFrame(animarBarraCarregamento);
+
+function concluirTelaDeCarregamento() {
+  if (transicaoLoadingAgendada) return;
+  transicaoLoadingAgendada = true;
+
+  if (pauseMenu && typeof pauseMenu.setLoadingComplete === "function") {
+    pauseMenu.setLoadingComplete();
+  }
+
+  if (!renderIniciado) {
+    renderIniciado = true;
+    requestAnimationFrame(render);
+  }
+}
+
 // ORQUESTRADOR SEQUENCIAL SEGURO ANTI-LAG
 async function inicializarEcossistemaDoJogo() {
-  const fillBar = document.getElementById("real-loading-bar-fill");
-  
-  // Mapeia uma função global que o botão de início criado no buttons.js pode disparar
-  globalThis.dispararMusicaLoadingInicial = async () => {
-    console.log("[SISTEMA] Permissão de áudio concedida. Iniciando carregamento...");
-    
-    try {
-      if (fillBar) fillBar.style.width = "15%";
-      
-      // 1. Carrega buffers de áudio na thread secundária
-      await globalThis.audioGeral.carregarSons();
-      globalThis.audioGeral.tocarMusicaLoop("musicaLoading", 0.3);
-      if (fillBar) fillBar.style.width = "40%";
+  try {
+    // 1. Carrega buffers de áudio na thread secundária (sem tocar nada ainda:
+    // navegadores bloqueiam áudio antes do primeiro gesto do usuário — aqui,
+    // o clique no botão START na tela seguinte).
+    await globalThis.audioGeral.carregarSons();
 
-      // 2. Monta os pools síncronos na memória da GPU (Processamento do OBJ/MTL)
-      await criadorInimigos.inicializarPool(8);
-      if (fillBar) fillBar.style.width = "75%";
-      
-      await gerenciadorItens.inicializarPool();
-      if (fillBar) fillBar.style.width = "90%";
+    // 2. Monta os pools síncronos na memória da GPU (Processamento do OBJ/MTL)
+    await criadorInimigos.inicializarPool(8);
+    await gerenciadorItens.inicializarPool();
 
-      // 3. Transfere os minions estáticos criados para a fila ativa de combate
-      if (criadorInimigos.poolMinions && criadorInimigos.poolMinions.length > 0) {
-        criadorInimigos.poolMinions.forEach((minion, i) => {
-          minion.indice = i;
-          listaInimigos.push(minion);
+    // 3. Transfere os minions estáticos criados para a fila ativa de combate
+    if (criadorInimigos.poolMinions && criadorInimigos.poolMinions.length > 0) {
+      criadorInimigos.poolMinions.forEach((minion, i) => {
+        minion.indice = i;
+        listaInimigos.push(minion);
 
-          if (i < 2) {
-            const canto = i % 2 === 0 ? -40 : 40;
-            minion.mesh.position.set(
-              canto,
-              CONFIG.input.planeBaseY,
-              CONFIG.inimigos.posicaoZCombate,
-            );
-            minion.offsetZAtual = 0;
-            minion.posiguezCombate = CONFIG.inimigos.posicaoZCombate;
-            minion.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
-            minion.ativo = true;
-            minion.mesh.visible = true;
-            minion.bb.setFromObject(minion.mesh);
-          }
-        });
-      }
-
-      if (fillBar) fillBar.style.width = "100%";
-      console.log("[SISTEMA] Todos os elementos foram pré-carregados!");
-
-      // Pequeno atraso visual para o jogador notar a barra em 100% antes de abrir o menu
-      setTimeout(() => {
-        const loadingScreen = document.getElementById("real-loading-screen");
-        const startOverlay = document.getElementById("real-start-overlay");
-
-        if (loadingScreen) loadingScreen.remove(); 
-        if (startOverlay) startOverlay.style.display = "flex"; 
-
-        // 4. Libera e dispara o primeiro frame estável com objetos montados!
-        render();
-      }, 400);
-
-    } catch (err) {
-      console.error("[FALHA CRÍTICA] Inicialização interrompida:", err);
+        if (i < 2) {
+          const canto = i % 2 === 0 ? -40 : 40;
+          minion.mesh.position.set(
+            canto,
+            CONFIG.input.planeBaseY,
+            CONFIG.inimigos.posicaoZCombate,
+          );
+          minion.offsetZAtual = 0;
+          minion.posiguezCombate = CONFIG.inimigos.posicaoZCombate;
+          minion.posicaoZOriginal = CONFIG.inimigos.posicaoZCombate;
+          minion.ativo = true;
+          minion.mesh.visible = true;
+          minion.bb.setFromObject(minion.mesh);
+        }
+      });
     }
-  };
+
+    progressoAlvo = 1;
+    console.log("[SISTEMA] Todos os elementos foram pré-carregados!");
+  } catch (err) {
+    console.error("[FALHA CRÍTICA] Inicialização interrompida:", err);
+  }
 }
 
 function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
@@ -240,34 +314,18 @@ window.addEventListener(
 );
 createWorldTiles(scene);
 
-const clock = new THREE.Clock();
-let isPaused = false;
-let gameSpeed = CONFIG.modos.velocidadeJogoPadrao;
-
-if (!CONFIG.DISABLE_START_MENU) {
-  const pauseMenu = initPauseMenu({
-    renderer,
-    getIsPaused: () => isPaused,
-    setPaused: (value) => {
-      isPaused = value;
-      pauseMenu.toggleDisplay(value);
-      if (!value) clock.getDelta();
-    },
-    getGameSpeed: () => gameSpeed,
-    setGameSpeed: (value) => {
-      gameSpeed = value;
-    },
-  });
-}
-
 const _direcaoTiroJogador = new THREE.Vector3();
 
 function gerenciarDisparoJogador(scaledDelta) {
   tempoUltimoTiro += scaledDelta;
   if (globalThis._shootEnabled === false) return;
 
+  // No mobile, o disparo é automático: atira sempre que o joystick desloca a
+  // mira (ver mobile.js), sem precisar de um botão de tiro dedicado.
+  const disparoAtivo = estaAtirando || globalThis._mobileFiring === true;
+
   if (
-    estaAtirando &&
+    disparoAtivo &&
     tempoUltimoTiro >= CADENCIA_TIRO &&
     targetMesh &&
     aviaoMesh

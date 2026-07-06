@@ -4,8 +4,9 @@ import { carregarAviaoInimigo2 } from "./ovniInimigo.js";
 import { CONFIG } from "./config.js";
 
 export class CriadorInimigos {
-  constructor(scene) {
+  constructor(scene, loadingManager) {
     this.scene = scene;
+    this.loadingManager = loadingManager;
     this.tempoInimigo = 0;
     this.velocidadePerseguicao = CONFIG.inimigos.velocidadePerseguicao;
     this.velocidadeZigueZague = CONFIG.inimigos.velocidadeZigueZague;
@@ -22,8 +23,8 @@ export class CriadorInimigos {
         const tipoInimigo = i % 2 === 0 ? "alien" : "ovni";
         const aviaoMesh =
           tipoInimigo === "alien"
-            ? await carregarAviaoInimigo()
-            : await carregarAviaoInimigo2();
+            ? await carregarAviaoInimigo(this.loadingManager)
+            : await carregarAviaoInimigo2(this.loadingManager);
 
         aviaoMesh.position.set(0, -500, 0);
         aviaoMesh.visible = false;
@@ -47,7 +48,7 @@ export class CriadorInimigos {
         });
       }
 
-      const bossMesh = await carregarAviaoInimigo();
+      const bossMesh = await carregarAviaoInimigo(this.loadingManager);
       bossMesh.position.set(0, -500, 0);
       bossMesh.visible = false;
       this.scene.add(bossMesh);

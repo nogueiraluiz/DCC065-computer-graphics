@@ -3,8 +3,9 @@ import * as THREE from "three";
 import HealthpackHK from "./healthpackHK.js";
 
 export class GerenciadorItens {
-  constructor(scene) {
+  constructor(scene, loadingManager) {
     this.scene = scene;
+    this.loadingManager = loadingManager;
     this.poolHealthPacks = [];
     this.tamanhoPool = 5;
 
@@ -29,7 +30,7 @@ export class GerenciadorItens {
     if (this.inicializado) return;
 
     try {
-      const geradorBase = new HealthpackHK(this.scene);
+      const geradorBase = new HealthpackHK(this.scene, this.loadingManager);
       const meshBase = await geradorBase.carregarModel();
 
       if (meshBase) {

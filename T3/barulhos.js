@@ -1,27 +1,33 @@
 // barulhos.js
 import * as THREE from "three";
 
+const ASSET_BASE = new URL("./assets/", import.meta.url);
+
+function assetUrl(fileName) {
+  return new URL(fileName, ASSET_BASE).href;
+}
+
 export class GerenciadorAudio {
-  constructor(camera) {
+  constructor(camera, loadingManager) {
     this.camera = camera;
     this.listener = new THREE.AudioListener();
     this.camera.add(this.listener);
 
-    this.loader = new THREE.AudioLoader();
+    this.loader = new THREE.AudioLoader(loadingManager);
     this.sons = {};
   }
 
   async carregarSons() {
     const arquivos = {
-      musicaFundo: "./assets/HelloKittyOnlineOST.mp3",
-      musicaMorte: "./assets/EuMorri.mp3",
-      musicaLoading: "./assets/hello-kitty.mp3",
-      tiroTomado: "./assets/a-meme-tiro.mp3",
-      laser: "./assets/laser-sound.mp3",
-      alienAtingido: "./assets/falling.mp3",
-      fairyDust: "./assets/fairy-dust.mp3",
-      musicaBoss: "./assets/16-scientist-boss.mp3", // Música do Boss
-      somVitoria: "./assets/hello-kitty.mp3", // Som de vitória
+      musicaFundo: assetUrl("HelloKittyOnlineOST.mp3"),
+      musicaMorte: assetUrl("EuMorri.mp3"),
+      musicaLoading: assetUrl("hello-kitty.mp3"),
+      tiroTomado: assetUrl("a-meme-tiro.mp3"),
+      laser: assetUrl("laser-sound.mp3"),
+      alienAtingido: assetUrl("falling.mp3"),
+      fairyDust: assetUrl("fairy-dust.mp3"),
+      musicaBoss: assetUrl("16-scientist-boss.mp3"), // Música do Boss
+      somVitoria: assetUrl("hello-kitty.mp3"), // Som de vitória
     };
 
     const promessas = Object.entries(arquivos).map(([nome, caminho]) => {

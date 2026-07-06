@@ -1,0 +1,15 @@
+# O jogo (index.html na raiz) só depende de: build/, libs/, html/, favicon.ico
+# e T3/ (que tem sua própria pasta T3/assets/). Tudo abaixo é conteúdo de
+# outros exercícios do curso, não usado pelo jogo — excluído do deploy do
+# surge.sh para reduzir drasticamente o tamanho do upload.
+
+.git/
+T1/
+T2/
+exercises/
+examples/
+
+# Pasta de assets da RAIZ (texturas/objetos de outros exercícios, ~170 MB).
+# A barra inicial ancora o padrão só na raiz do projeto, sem afetar
+# T3/assets/ (que o jogo usa de verdade).
+/assets/

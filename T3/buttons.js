@@ -341,53 +341,56 @@ export function initPauseMenu({
   }, 10);
 
   // =========================================================================
-  // INTERRUPÇÃO DE SEGURANÇA DE ÁUDIO (CLICK TO START)
-  // =========================================================================
-  const clickToStartOverlay = document.createElement("div");
-  clickToStartOverlay.style.cssText = `
-    position: fixed; inset: 0; display: flex; flex-direction: column; 
-    align-items: center; justify-content: center; background-color: rgb(148, 181, 224); 
-    z-index: 3000; font-family: ${FONTE_PADRAO}; user-select: none;
-  `;
-
-  const clickTitle = document.createElement("div");
-  clickTitle.innerHTML = `
-    <span style="color: #ffffff; font-size: 28px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; text-shadow: 3px 3px 0px #3d405b;">HELLO KITTY WORLD</span>
-  `;
-
-  const clickButton = document.createElement("button");
-  clickButton.textContent = "CLIQUE PARA ENTRAR";
-  clickButton.style.cssText = `
-    margin-top: 30px; padding: 16px 32px; font-size: 16px; font-weight: 900; color: #3d405b; 
-    background-color: #f2d925; border: 3px solid #3d405b; border-radius: 16px; cursor: pointer; 
-    box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out; font-family: ${FONTE_PADRAO};
-  `;
-
-  clickToStartOverlay.appendChild(clickTitle);
-  clickToStartOverlay.appendChild(clickButton);
-  document.body.appendChild(clickToStartOverlay);
-
-  // =========================================================================
-  // 1. TELA DE CARREGAMENTO REAL COM ÍCONE DA HELLO KITTY
+  // 1. TELA DE CARREGAMENTO — visível assim que a página abre, sem nenhum
+  // clique prévio. Fundo temático de céu (mesma paleta do fog/sky do jogo)
+  // com "nuvens" simples em CSS, já que não há um asset de imagem de fundo.
   // =========================================================================
   const loadingScreen = document.createElement("div");
   loadingScreen.id = "real-loading-screen";
   loadingScreen.style.cssText = `
-    position: fixed; inset: 0; display: none; flex-direction: column; 
-    align-items: center; justify-content: center; background-color: rgb(148, 181, 224); 
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; overflow: hidden;
+    background: linear-gradient(180deg, #6fa3e0 0%, #94b5e0 45%, #bcd3ee 100%);
     z-index: 2500; font-family: ${FONTE_PADRAO}; user-select: none;
+    transition: opacity 0.35s ease, transform 0.35s ease;
   `;
 
-  // Elemento do Ícone / Imagem da Hello Kitty
+  let loadingEncerrado = false;
+
+  // "Nuvens" decorativas simples, só CSS — reforçam o tema de céu/avião.
+  const cloudsLayer = document.createElement("div");
+  cloudsLayer.style.cssText = `position: absolute; inset: 0; pointer-events: none;`;
+  const nuvemSpecs = [
+    { top: "12%", left: "8%", size: 90, dur: "22s" },
+    { top: "22%", left: "68%", size: 130, dur: "28s" },
+    { top: "68%", left: "20%", size: 110, dur: "25s" },
+    { top: "78%", left: "72%", size: 80, dur: "19s" },
+  ];
+  nuvemSpecs.forEach((n, i) => {
+    const nuvem = document.createElement("div");
+    nuvem.style.cssText = `
+      position: absolute; top: ${n.top}; left: ${n.left}; width: ${n.size}px; height: ${n.size * 0.5}px;
+      background: rgba(255,255,255,0.85); border-radius: 50%;
+      box-shadow: ${n.size * 0.35}px ${n.size * 0.08}px 0 -${n.size * 0.08}px rgba(255,255,255,0.85),
+                  -${n.size * 0.3}px ${n.size * 0.1}px 0 -${n.size * 0.1}px rgba(255,255,255,0.7);
+      animation: nuvemFlutua ${n.dur} ease-in-out infinite alternate;
+      animation-delay: -${i * 3}s;
+    `;
+    cloudsLayer.appendChild(nuvem);
+  });
+  loadingScreen.appendChild(cloudsLayer);
+
+  // Ícone da Hello Kitty: emoji em vez de imagem (não há asset de ícone no
+  // projeto, e assim não depende de nenhum arquivo externo para renderizar).
   const kittyIcon = document.createElement("div");
+  kittyIcon.textContent = "🎀";
   kittyIcon.style.cssText = `
     width: 100px; height: 100px;
-    background-image: url('./assets/hello-kitty-icon.png'); /* Certifique-se de ter essa imagem ou use um svg/placeholder */
-    background-size: contain; background-repeat: no-repeat; background-position: center;
-    margin-bottom: 24px;
+    font-size: 72px; line-height: 100px; text-align: center;
+    margin-bottom: 24px; position: relative;
   `;
 
-  // Animação CSS para fazer a Hello Kitty balançar fofamente enquanto carrega
+  // Animações CSS: a Hello Kitty balança, o texto pisca e as nuvens flutuam.
   if (!document.getElementById("kitty-dance-style")) {
     const styleSheet = document.createElement("style");
     styleSheet.id = "kitty-dance-style";
@@ -398,6 +401,14 @@ export function initPauseMenu({
       }
       @keyframes piscarTexto {
         from { opacity: 1; } to { opacity: 0.5; }
+      }
+      @keyframes nuvemFlutua {
+        from { transform: translateX(0); } to { transform: translateX(40px); }
+      }
+      .loading-fade-out {
+        opacity: 0;
+        transform: scale(0.98);
+        pointer-events: none;
       }
     `;
     document.head.appendChild(styleSheet);
@@ -410,13 +421,13 @@ export function initPauseMenu({
   loadingText.style.cssText = `
     color: #ffffff; font-size: 20px; font-weight: 900; letter-spacing: 2px;
     margin-bottom: 20px; text-shadow: 3px 3px 0px #3d405b; text-transform: uppercase;
-    animation: piscarTexto 0.8s infinite alternate;
+    animation: piscarTexto 0.8s infinite alternate; position: relative;
   `;
 
   const barContainer = document.createElement("div");
   barContainer.style.cssText = `
-    width: 280px; height: 24px; background: #fbf8f3; 
-    border: 4px solid #3d405b; border-radius: 12px; overflow: hidden; 
+    width: 280px; height: 24px; background: #fbf8f3;
+    border: 4px solid #3d405b; border-radius: 12px; overflow: hidden;
     box-shadow: 4px 4px 0px #3d405b; position: relative;
   `;
 
@@ -424,73 +435,81 @@ export function initPauseMenu({
   fillBar.id = "real-loading-bar-fill";
   fillBar.style.cssText = `
     width: 0%; height: 100%; background: #e06187; /* Rosa Hello Kitty */
-    transition: width 0.1s ease-out;
+    transition: width 0.15s ease-out;
   `;
 
-  barContainer.appendChild(fillBar);
-  loadingScreen.appendChild(kittyIcon);
-  loadingScreen.appendChild(loadingText);
-  loadingScreen.appendChild(barContainer);
-  document.body.appendChild(loadingScreen);
-
-  // Gatilho inicial para burlar o bloqueio de som do navegador
-  clickButton.addEventListener("click", () => {
-    clickToStartOverlay.remove();
-    loadingScreen.style.display = "flex";
-
-    // Ativa a música de loading imediatamente via flag global mapeada no main.js
-    if (globalThis.dispararMusicaLoadingInicial) {
-      globalThis.dispararMusicaLoadingInicial();
-    }
-  });
-
-  // =========================================================================
-  // 2. TELA DE PLAY (INICIA ESCONDIDA)
-  // =========================================================================
-  const startOverlay = document.createElement("div");
-  startOverlay.id = "real-start-overlay";
-  startOverlay.style.cssText = `
-    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    background-color: rgb(148, 181, 224); z-index: 2000; user-select: none; font-family: ${FONTE_PADRAO};
+  // Percentual numérico real (não é só decoração — reflete o progresso
+  // efetivo dos assets carregados, atualizado pelo LoadingManager em main.js).
+  const percentText = document.createElement("div");
+  percentText.id = "real-loading-bar-percent";
+  percentText.textContent = "0%";
+  percentText.style.cssText = `
+    color: #ffffff; font-size: 14px; font-weight: 900; margin-top: 10px;
+    text-shadow: 2px 2px 0px #3d405b; letter-spacing: 1px; position: relative;
   `;
 
-  const startPanel = document.createElement("div");
-  startPanel.style.cssText = `
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+  const loadingStage = document.createElement("div");
+  loadingStage.style.cssText = `
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  `;
+
+  const welcomePanel = document.createElement("div");
+  welcomePanel.style.cssText = `
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
     min-width: 320px; padding: 40px 30px; border-radius: 25px; background-color: #fbf8f3;
     border: 4px solid #3d405b; box-shadow: 8px 8px 0px #3d405b; text-align: center;
     font-family: ${FONTE_PADRAO};
   `;
 
-  const startTitle = document.createElement("div");
-  startTitle.innerHTML = `
+  const welcomeTitle = document.createElement("div");
+  welcomeTitle.innerHTML = `
     <span style="color: #e06187; display: block; font-size: 16px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; font-family: ${FONTE_PADRAO};">Bem-vindo ao</span>
     <span style="color: #1f6494; font-size: 36px; font-weight: 900; line-height: 1.1; letter-spacing: 1px; font-family: ${FONTE_PADRAO};">HELLO KITTY<br><span style="color: #e06187; font-family: ${FONTE_PADRAO};">WORLD</span></span>
   `;
 
   const playButton = document.createElement("button");
-  playButton.textContent = "JOGAR";
+  playButton.textContent = "INICIAR";
   playButton.style.cssText = `
     padding: 16px 40px; font-size: 20px; font-weight: 900; font-family: ${FONTE_PADRAO};
     color: #3d405b; background-color: #f2d925; border: 3px solid #3d405b; border-radius: 50px;
     cursor: pointer; box-shadow: 4px 4px 0px #3d405b; transition: all 0.1s ease-in-out; letter-spacing: 1px;
   `;
 
-  playButton.addEventListener("click", () => {
-    startOverlay.style.display = "none";
-    setPaused(false);
+  function esconderLoadingEIniciar() {
+    if (loadingEncerrado) return;
+    loadingEncerrado = true;
 
-    if (globalThis.audioGeral) {
-      globalThis._loadingAtivo = false;
-      globalThis.audioGeral.pararSom("musicaLoading");
-      globalThis.audioGeral.tocarMusicaLoop("musicaFundo", 0.2);
-    }
+    loadingScreen.classList.add("loading-fade-out");
+    loadingScreen.addEventListener(
+      "transitionend",
+      (event) => {
+        if (event.target !== loadingScreen) return;
+        loadingScreen.remove();
+        setPaused(false);
+        if (globalThis.audioGeral) {
+          globalThis._loadingAtivo = false;
+          globalThis.audioGeral.pararSom("musicaLoading");
+          globalThis.audioGeral.tocarMusicaLoop("musicaFundo", 0.2);
+        }
+      },
+      { once: true },
+    );
+  }
+
+  playButton.addEventListener("click", () => {
+    esconderLoadingEIniciar();
   });
 
-  startPanel.appendChild(startTitle);
-  startPanel.appendChild(playButton);
-  startOverlay.appendChild(startPanel);
-  document.body.appendChild(startOverlay);
+  barContainer.appendChild(fillBar);
+  loadingStage.appendChild(kittyIcon);
+  loadingStage.appendChild(loadingText);
+  loadingStage.appendChild(barContainer);
+  loadingStage.appendChild(percentText);
+  welcomePanel.appendChild(welcomeTitle);
+  welcomePanel.appendChild(playButton);
+  loadingScreen.appendChild(loadingStage);
+  loadingScreen.appendChild(welcomePanel);
+  document.body.appendChild(loadingScreen);
 
   // =========================================================================
   // 3. MENU DE PAUSE INTERNO (SISTEMA PADRÃO DO ESCAPE)
@@ -627,10 +646,7 @@ export function initPauseMenu({
   }
 
   globalThis.addEventListener("keydown", (event) => {
-    if (
-      startOverlay.style.display === "flex" ||
-      document.body.contains(loadingScreen)
-    )
+    if (document.body.contains(loadingScreen))
       return;
     if (event.key === "Escape") {
       setPaused(!getIsPaused());
@@ -660,19 +676,13 @@ export function initPauseMenu({
   });
 
   renderer.domElement.addEventListener("pointerdown", () => {
-    if (
-      startOverlay.style.display === "flex" ||
-      document.body.contains(loadingScreen)
-    )
+    if (document.body.contains(loadingScreen))
       return;
     if (getIsPaused()) setPaused(false);
   });
 
   pauseOverlay.addEventListener("pointerdown", () => {
-    if (
-      startOverlay.style.display === "flex" ||
-      document.body.contains(loadingScreen)
-    )
+    if (document.body.contains(loadingScreen))
       return;
     if (getIsPaused()) setPaused(false);
   });
@@ -713,11 +723,12 @@ export function initPauseMenu({
   updateAudioButton();
 
   return {
+    setLoadingComplete() {
+      loadingStage.style.display = "none";
+      welcomePanel.style.display = "flex";
+    },
     toggleDisplay: (value) => {
-      if (
-        startOverlay.style.display === "flex" ||
-        document.body.contains(loadingScreen)
-      )
+      if (document.body.contains(loadingScreen))
         return;
       pauseOverlay.style.display = value ? "flex" : "none";
     },
