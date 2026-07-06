@@ -2,6 +2,11 @@ import * as THREE from "three";
 // === 1. ADICIONA A IMPORTAÇÃO DO CONFIG NO TOPO ===
 import { CONFIG } from "./config.js";
 
+// Vetores auxiliares reaproveitados entre frames/pools para evitar alocações
+// no cálculo de deslocamento da bounding box (ver update()).
+const _posAnterior = new THREE.Vector3();
+const _deltaMovimento = new THREE.Vector3();
+
 export class LaserPool {
   /**
    * @param {THREE.Scene} scene - A cena principal do jogo.
@@ -100,6 +105,8 @@ export class LaserPool {
       let laser = this.activeLasers[i];
 
       // --- SISTEMA DE MOVIMENTAÇÃO ISOLADO ---
+      _posAnterior.copy(laser.mesh.position);
+
       if (laser.direcaoCustomizada) {
         // INIMIGO
         const velocidadeInimigoBase = CONFIG.lasers.velocidadeInimigo * 75;
@@ -113,8 +120,12 @@ export class LaserPool {
         laser.mesh.translateZ(velocidadeJogadorBase * scaledDelta);
       }
 
-      // Atualiza a Bounding Box de colisão acompanhando a nova posição
-      laser.bb.setFromObject(laser.mesh);
+      // A rotação do laser é fixada no spawn (shoot() já chamou setFromObject
+      // com a orientação correta) e nunca muda depois — então, em vez de
+      // recalcular a bounding box inteira a partir da geometria a cada frame,
+      // só transladamos a caixa já existente pelo deslocamento deste frame.
+      _deltaMovimento.subVectors(laser.mesh.position, _posAnterior);
+      laser.bb.translate(_deltaMovimento);
 
       // --- CHECK DE SEGURANÇA: SUMIÇO PERTO DA TELA ---
       if (laser.mesh.position.z < CONFIG.lasers.distanciaSumiçoPerto) {

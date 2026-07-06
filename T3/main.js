@@ -210,6 +210,8 @@ async function inicializarEcossistemaDoJogo() {
   }
 }
 
+const _direcaoTiroInimigo = new THREE.Vector3();
+
 function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
   if (!aviaoMesh || !camera || globalThis._shootEnabled === false) return;
 
@@ -241,14 +243,14 @@ function gerenciarDisparoInimigos(scaledDelta, aviaoMesh) {
     const intervaloAdaptado = intervaloBase / gameSpeed;
 
     if (inimigoTarget.tempoRecarga >= intervaloAdaptado) {
-      let direcaoAlvo = new THREE.Vector3();
       // Calcula a direção em relação à posição do avião do jogador
-      direcaoAlvo
+      // (LaserPool.shoot clona o vetor internamente, então é seguro reaproveitar)
+      _direcaoTiroInimigo
         .subVectors(aviaoMesh.position, inimigoTarget.mesh.position)
         .normalize();
 
       // Dispara o laser do pool dos inimigos
-      laserPoolInimigos.shoot(inimigoTarget.mesh.position, direcaoAlvo);
+      laserPoolInimigos.shoot(inimigoTarget.mesh.position, _direcaoTiroInimigo);
 
       if (globalThis.audioGeral)
         globalThis.audioGeral.tocarEfeito("laser", 0.05);
