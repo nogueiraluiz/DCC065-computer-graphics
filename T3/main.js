@@ -465,7 +465,7 @@ function render() {
     gerenciarDisparoInimigos(scaledDelta, aviaoMesh);
 
     laserPool.update(scaledDelta, aviaoMesh, scene.fog.far);
-    laserPoolInimigos.update(scaledDelta, aviaoMesh);
+    laserPoolInimigos.update(scaledDelta, aviaoMesh, scene.fog.far);
 
     const inimigosProntosParaColidir = listaInimigos.filter(
       (m) => m.ativo && !m.caindo,
