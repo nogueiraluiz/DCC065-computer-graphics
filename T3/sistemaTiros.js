@@ -122,25 +122,17 @@ export class LaserPool {
         continue;
       }
 
-      // --- SISTEMA LOGÍSTICO DE DESCARTE POR NÉVOA (CORRIGIDO) ---
-      if (this.tipoAtirador === "player") {
-        // APENAS O JOGADOR: Calcula a distância do tiro até o avião (ponto de vista do jogador)
-        // Isso impede que a rolagem do cenário quebre o descarte!
-        let distanciaAteJogador = aviaoMesh
-          ? laser.mesh.position.distanceTo(aviaoMesh.position)
-          : laser.mesh.position.distanceTo(laser.startPosition);
+      // --- SISTEMA LOGÍSTICO DE DESCARTE POR NÉVOA (UNIFICADO) ---
+      // Usa a distância até o avião para jogador E inimigos (boss incluso).
+      // Evita que tiros de inimigos posicionados longe do combate padrão
+      // (ex: boss, mais distante que inimigos comuns) sumam por deslocamento
+      // fixo antes de cruzar a câmera.
+      let distanciaAteJogador = aviaoMesh
+        ? laser.mesh.position.distanceTo(aviaoMesh.position)
+        : laser.mesh.position.distanceTo(laser.startPosition);
 
-        if (distanciaAteJogador > 900 || (fogFar && distanciaAteJogador > fogFar)) {
+      if (distanciaAteJogador > 900 || (fogFar && distanciaAteJogador > fogFar)) {
         this.despawn(laser, i);
-      }
-      } else {
-        // INIMIGOS: Mantêm o descarte fixo por deslocamento próprio
-        let distanciaPercorrida = laser.mesh.position.distanceTo(
-          laser.startPosition,
-        );
-        if (distanciaPercorrida > 350) {
-          this.despawn(laser, i);
-        }
       }
     }
   }
