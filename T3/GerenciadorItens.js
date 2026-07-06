@@ -19,6 +19,10 @@ export class GerenciadorItens {
 
     // Controle interno para forçar a GPU a digerir o shader no primeiro frame
     this.framesPrecompilacao = 0;
+
+    // Distância em Z em que o item passa a ser atraído suavemente pro avião no plano XY
+    this.raioAtracaoZ = 20;
+    this.velocidadeAtracao = 1.5;
   }
 
   async inicializarPool() {
@@ -170,6 +174,17 @@ export class GerenciadorItens {
 
       pack.mesh.position.z -= 45 * scaledDelta;
       pack.mesh.rotation.z += pack.velocidadeRotacao * scaledDelta * 60;
+
+      // Atração suave no plano XY quando o avião está perto o suficiente em Z
+      const dzPlano = Math.abs(aviaoMesh.position.z - pack.mesh.position.z);
+
+      if (dzPlano < this.raioAtracaoZ) {
+        const dxPlano = aviaoMesh.position.x - pack.mesh.position.x;
+        const dyPlano = aviaoMesh.position.y - pack.mesh.position.y;
+        const fatorLerp = Math.min(this.velocidadeAtracao * scaledDelta, 1);
+        pack.mesh.position.x += dxPlano * fatorLerp;
+        pack.mesh.position.y += dyPlano * fatorLerp;
+      }
 
       // Colisão aritmética veloz
       const dx = pack.mesh.position.x - aviaoMesh.position.x;
