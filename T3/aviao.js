@@ -77,11 +77,11 @@ const materialVidroOtimizado = new THREE.MeshPhysicalMaterial({
  */
 export function criaAviao(scene) {
   // --- Geometrias (formas brutas, sem posição ainda) ---
-  const cilindroCorpo = new THREE.CylinderGeometry(3, 2.6, 10, 80); // fuselagem cilíndrica
+  const cilindroCorpo = new THREE.CylinderGeometry(3, 2.6, 10, 20); // fuselagem cilíndrica
   const asa = new THREE.CylinderGeometry(1.2, 2.8, 12, 5); // asa com perfil pentagonal
-  const sphereoNariz = new THREE.CapsuleGeometry(3, 2, 3, 80); // nariz arredondado
-  const sphereoRabo = new THREE.SphereGeometry(2.6, 80, 5); // tampa traseira
-  const cilindroRabo = new THREE.CapsuleGeometry(1, 5, 2, 30); // empenagem horizontal
+  const sphereoNariz = new THREE.CapsuleGeometry(3, 2, 3, 20); // nariz arredondado
+  const sphereoRabo = new THREE.SphereGeometry(2.6, 20, 5); // tampa traseira
+  const cilindroRabo = new THREE.CapsuleGeometry(1, 5, 2, 12); // empenagem horizontal
   const cilindroLeme = new THREE.CylinderGeometry(2, 1, 6.5); // leme vertical
   const cilindroKitty = new THREE.CylinderGeometry(0.1, 2, 1, 3); // orelhas da Hello Kitty
   const sphereFofo = new THREE.SphereGeometry(0.4); // nó de fita (objeto raiz)
