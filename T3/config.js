@@ -69,33 +69,8 @@ export const CONFIG = {
     multiplicadorBalançoY: 0.07,
   },
 
-  cenario: {
-    tiles: {
-      tamanho: 2000,
-      segmentos: 63,
-      velocidadeRolagem: 50,
-      alturaMaxima: 100,
-      alturaMinima: -20,
-      sementeRuido: 1337,
-    },
-    arvores: {
-      gradesColunas: 20,
-      gradesLinhas: 20,
-      distanciaMinima: 50,
-      alturaMinimaNascimento: -10,
-      alturaMaximaNascimento: 50,
-    },
-  },
-
   armas: {
     limiteTiros: 20,
-  },
-
-  itens: {
-    distanciaAtracao: 120,
-    distanciaColeta: 8,
-    velocidadeAtracao: 8.5,
-    porcentagemCura: 25,
   },
 
   modos: {
