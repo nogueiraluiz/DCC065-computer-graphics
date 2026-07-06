@@ -11,8 +11,16 @@ const CORES_OVNI = [
   "#fbd8b6", // Bege Suave
 ];
 
-export function carregarAviaoInimigo2() {
-  return new Promise((resolve) => {
+// Cache do template carregado da rede: o pool pede várias cópias deste inimigo,
+// mas o OBJ/MTL só precisa ser buscado e parseado uma única vez — as demais
+// cópias são clones baratos (geometria compartilhada) do mesmo template, cada
+// uma recebendo sua própria cor sorteada por cima.
+let templatePromise = null;
+
+function carregarTemplate() {
+  if (templatePromise) return templatePromise;
+
+  templatePromise = new Promise((resolve) => {
     const mtlLoader = new MTLLoader();
     mtlLoader.setPath("./assets/Flying saucer/");
     mtlLoader.load("1352 Flying Saucer.mtl", (materials) => {
@@ -24,30 +32,38 @@ export function carregarAviaoInimigo2() {
         (object) => {
           object.name = "aviaoInimigo";
           object.scale.set(0.12, 0.12, 0.12);
-
-          // Sorteia uma cor da lista para este OVNI específico
-          const corSorteada =
-            CORES_OVNI[Math.floor(Math.random() * CORES_OVNI.length)];
-
-          // Varre todas as sub-malhas do modelo OBJ para injetar o material metálico colorido
-        object.traverse((child) => {
-          if (child.isMesh) {
-            child.material = new THREE.MeshStandardMaterial({
-              color: new THREE.Color(corSorteada),
-              metalness: 0.0, // Remove totalmente o aspecto de metal pesado/ferro
-              roughness: 0.15, // Deixa a superfície bem lisinha, parecendo plástico de brinquedo novo ou vinil
-              flatShading: false, // Desativa as arestas duras! Deixa o modelo perfeitamente redondo e fofinho
-              clearcoat: 1.0, // Adiciona uma camada extra de verniz brilhante por cima (estilo esmalte/porcelana)
-              clearcoatRoughness: 0.1,
-            });
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-
           resolve(object);
         },
       );
     });
   });
+
+  return templatePromise;
+}
+
+export async function carregarAviaoInimigo2() {
+  const template = await carregarTemplate();
+  const object = template.clone(true);
+
+  // Sorteia uma cor da lista para este OVNI específico
+  const corSorteada =
+    CORES_OVNI[Math.floor(Math.random() * CORES_OVNI.length)];
+
+  // Varre todas as sub-malhas do clone para injetar o material metálico colorido
+  object.traverse((child) => {
+    if (child.isMesh) {
+      child.material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(corSorteada),
+        metalness: 0.0, // Remove totalmente o aspecto de metal pesado/ferro
+        roughness: 0.15, // Deixa a superfície bem lisinha, parecendo plástico de brinquedo novo ou vinil
+        flatShading: false, // Desativa as arestas duras! Deixa o modelo perfeitamente redondo e fofinho
+        clearcoat: 1.0, // Adiciona uma camada extra de verniz brilhante por cima (estilo esmalte/porcelana)
+        clearcoatRoughness: 0.1,
+      });
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  return object;
 }

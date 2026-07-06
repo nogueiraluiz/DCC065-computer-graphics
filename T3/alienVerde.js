@@ -2,8 +2,15 @@ import * as THREE from "three";
 import { OBJLoader } from "../../build/jsm/loaders/OBJLoader.js";
 import { MTLLoader } from "../../build/jsm/loaders/MTLLoader.js";
 
-export function carregarAviaoInimigo() {
-  return new Promise((resolve) => {
+// Cache do template carregado da rede: o pool pede várias cópias deste inimigo,
+// mas o OBJ/MTL só precisa ser buscado e parseado uma única vez — as demais
+// cópias são clones baratos (geometria/material compartilhados) do mesmo template.
+let templatePromise = null;
+
+function carregarTemplate() {
+  if (templatePromise) return templatePromise;
+
+  templatePromise = new Promise((resolve) => {
     const mtlLoader = new MTLLoader();
     mtlLoader.setPath("./assets/alien in green spaceship/");
     mtlLoader.load("materials.mtl", (materials) => {
@@ -48,4 +55,11 @@ export function carregarAviaoInimigo() {
       );
     });
   });
+
+  return templatePromise;
+}
+
+export async function carregarAviaoInimigo() {
+  const template = await carregarTemplate();
+  return template.clone(true);
 }
