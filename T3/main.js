@@ -6,7 +6,7 @@ import * as THREE from "three";
 import Stats from "../../build/jsm/libs/stats.module.js";
 import { criaAviao } from "./aviao.js";
 import { onWindowResize } from "../libs/util/util.js";
-import { createWorldTiles, updateTiles } from "./tiles.js";
+import { createWorldTiles, updateTiles, createWaterPlane } from "./tiles.js";
 import { initMouseTracking, inputUpdate } from "./input.js";
 import { initMobileControls } from "./mobile.js";
 import { updateCamera } from "./camera.js";
@@ -312,7 +312,14 @@ window.addEventListener(
   },
   false,
 );
+
+const waterNormals = new THREE.TextureLoader().load(
+  '../assets/textures/NormalMapping/waternormals.jpg',
+  (tex) => { tex.wrapS = tex.wrapT = THREE.RepeatWrapping; }
+);
+  
 createWorldTiles(scene);
+createWaterPlane(scene, waterNormals);
 
 const _direcaoTiroJogador = new THREE.Vector3();
 
